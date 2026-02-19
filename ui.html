@@ -305,6 +305,22 @@
       padding: 10px 16px;
       z-index: 10;
     }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 10px 16px;
+      border-top: 1px solid #f0f0f0;
+      text-align: center;
+      font-size: 10px;
+      color: #bbb;
+    }
+    .footer a {
+      color: #ff813f;
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -352,7 +368,15 @@
     <div id="apply-notification" class="notification"></div>
   </div>
 
+  <!-- Footer -->
+  <div class="footer">
+    Made by Amir Noyman · <a id="support-link">Buy me a coffee</a>
+  </div>
+
   <script>
+    // ─── Config ─────────────────────────────────────────────────
+    var BMC_URL = 'https://buymeacoffee.com/amirnoyman'; // ← update with your actual BMC page
+
     // ─── State ──────────────────────────────────────────────────
     var matches = [];
     var selectedSet = new Set();
@@ -401,6 +425,10 @@
     }
 
     // ─── Event handlers ─────────────────────────────────────────
+
+    document.getElementById('support-link').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'open-url', url: BMC_URL } }, '*');
+    });
 
     scanBtn.addEventListener('click', function() {
       parent.postMessage({ pluginMessage: { type: 'scan' } }, '*');

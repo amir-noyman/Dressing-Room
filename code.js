@@ -55,6 +55,8 @@ class TokenApplicator {
                     await this.apply(msg.items);
                 else if (msg.type === 'strip')
                     await this.strip();
+                else if (msg.type === 'open-url')
+                    figma.openExternal(msg.url);
                 else if (msg.type === 'close')
                     figma.closePlugin();
             }
@@ -254,7 +256,6 @@ class TokenApplicator {
                         const alias = fillAliases[0];
                         const info = await this.resolveVar(alias.id);
                         if (info) {
-                            const isText = node.type === 'TEXT';
                             stats.matched++;
                             out.push({
                                 nodeId: node.id, nodeName: node.name,
