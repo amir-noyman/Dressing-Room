@@ -1,0 +1,21 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="#1E1E2E"/>
+
+  <!-- Hanger hook -->
+  <path d="M64 24C64 24 64 32 64 36C64 40 58 44 54 44" stroke="#A78BFA" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <circle cx="64" cy="22" r="4" stroke="#A78BFA" stroke-width="3" fill="none"/>
+
+  <!-- Hanger body -->
+  <path d="M34 64L64 44L94 64" stroke="#A78BFA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Token tag hanging from hanger -->
+  <rect x="46" y="72" width="36" height="22" rx="4" fill="#A78BFA"/>
+  <text x="64" y="87" text-anchor="middle" font-family="Inter, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#1E1E2E">TOKEN</text>
+
+  <!-- Small decorative dots representing bound variables -->
+  <circle cx="36" cy="96" r="3" fill="#4ADE80" opacity="0.8"/>
+  <circle cx="48" cy="102" r="2.5" fill="#38BDF8" opacity="0.8"/>
+  <circle cx="80" cy="102" r="2.5" fill="#FB923C" opacity="0.8"/>
+  <circle cx="92" cy="96" r="3" fill="#E879F9" opacity="0.8"/>
+</svg>

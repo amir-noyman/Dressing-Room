@@ -1,0 +1,75 @@
+<svg width="1920" height="960" viewBox="0 0 1920 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1920" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E1E2E"/>
+      <stop offset="100%" stop-color="#2D2B55"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="960" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.04" stroke="#A78BFA" stroke-width="1">
+    <line x1="0" y1="120" x2="1920" y2="120"/>
+    <line x1="0" y1="240" x2="1920" y2="240"/>
+    <line x1="0" y1="360" x2="1920" y2="360"/>
+    <line x1="0" y1="480" x2="1920" y2="480"/>
+    <line x1="0" y1="600" x2="1920" y2="600"/>
+    <line x1="0" y1="720" x2="1920" y2="720"/>
+    <line x1="0" y1="840" x2="1920" y2="840"/>
+    <line x1="240" y1="0" x2="240" y2="960"/>
+    <line x1="480" y1="0" x2="480" y2="960"/>
+    <line x1="720" y1="0" x2="720" y2="960"/>
+    <line x1="960" y1="0" x2="960" y2="960"/>
+    <line x1="1200" y1="0" x2="1200" y2="960"/>
+    <line x1="1440" y1="0" x2="1440" y2="960"/>
+    <line x1="1680" y1="0" x2="1680" y2="960"/>
+  </g>
+
+  <!-- Left side: Hanger icon (large) -->
+  <!-- Hook -->
+  <path d="M540 260C540 260 540 290 540 300C540 312 526 322 518 322" stroke="#A78BFA" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <circle cx="540" cy="254" r="8" stroke="#A78BFA" stroke-width="6" fill="none"/>
+  <!-- Hanger body -->
+  <path d="M440 400L540 322L640 400" stroke="#A78BFA" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Token tag -->
+  <rect x="490" y="430" width="100" height="56" rx="10" fill="#A78BFA"/>
+  <text x="540" y="465" text-anchor="middle" font-family="Inter, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#1E1E2E">TOKEN</text>
+  <!-- Decorative dots -->
+  <circle cx="450" cy="500" r="8" fill="#4ADE80" opacity="0.7"/>
+  <circle cx="480" cy="520" r="6" fill="#38BDF8" opacity="0.7"/>
+  <circle cx="600" cy="520" r="6" fill="#FB923C" opacity="0.7"/>
+  <circle cx="630" cy="500" r="8" fill="#E879F9" opacity="0.7"/>
+
+  <!-- Right side: Text -->
+  <!-- Plugin name -->
+  <text x="820" y="400" font-family="Inter, -apple-system, sans-serif" font-size="80" font-weight="800" fill="white" letter-spacing="-2">Dressing Room</text>
+  <!-- Tagline -->
+  <text x="820" y="460" font-family="Inter, -apple-system, sans-serif" font-size="28" font-weight="400" fill="#A78BFA" opacity="0.9">Rebind design tokens to raw values automatically</text>
+
+  <!-- Feature pills -->
+  <g font-family="Inter, -apple-system, sans-serif" font-size="18" font-weight="500">
+    <!-- Row 1 -->
+    <rect x="820" y="510" width="100" height="36" rx="18" fill="#4ADE80" opacity="0.15"/>
+    <text x="870" y="533" text-anchor="middle" fill="#4ADE80">Colors</text>
+
+    <rect x="935" y="510" width="110" height="36" rx="18" fill="#38BDF8" opacity="0.15"/>
+    <text x="990" y="533" text-anchor="middle" fill="#38BDF8">Spacing</text>
+
+    <rect x="1060" y="510" width="140" height="36" rx="18" fill="#A78BFA" opacity="0.15"/>
+    <text x="1130" y="533" text-anchor="middle" fill="#A78BFA">Typography</text>
+
+    <rect x="1215" y="510" width="100" height="36" rx="18" fill="#FB923C" opacity="0.15"/>
+    <text x="1265" y="533" text-anchor="middle" fill="#FB923C">Radius</text>
+
+    <rect x="1330" y="510" width="110" height="36" rx="18" fill="#F472B6" opacity="0.15"/>
+    <text x="1385" y="533" text-anchor="middle" fill="#F472B6">Borders</text>
+  </g>
+
+  <!-- Bottom text -->
+  <text x="960" y="880" text-anchor="middle" font-family="Inter, -apple-system, sans-serif" font-size="20" font-weight="400" fill="white" opacity="0.3">Scan · Apply · Strip — works with any variable library</text>
+</svg>
