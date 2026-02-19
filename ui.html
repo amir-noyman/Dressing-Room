@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dressing Room</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 11px;
+      color: #333;
+      background: #fff;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e5e5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 10;
+    }
+    .header h1 { font-size: 13px; font-weight: 600; }
+    .header .badge {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #f0f0f0;
+      color: #666;
+    }
+    .header .badge.ready { background: #e8f5e9; color: #2e7d32; }
+
+    /* ── Sections ── */
+    .section { padding: 12px 16px; }
+    .section + .section { border-top: 1px solid #e5e5e5; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px;
+      border: none;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary {
+      width: 100%;
+      background: #18a0fb;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #0d8de6; }
+    .btn-primary:disabled { background: #ccc; cursor: default; }
+    .btn-success {
+      width: 100%;
+      background: #1bc47d;
+      color: #fff;
+    }
+    .btn-success:hover { background: #15a86b; }
+    .btn-success:disabled { background: #ccc; cursor: default; }
+    .btn-danger {
+      background: #f5f5f5;
+      color: #c62828;
+      border: 1px solid #e0e0e0;
+    }
+    .btn-danger:hover { background: #fdecea; }
+    .btn-danger:disabled { background: #f5f5f5; color: #ccc; border-color: #e5e5e5; cursor: default; }
+
+    /* ── Token summary ── */
+    .token-summary {
+      display: none;
+      margin-top: 10px;
+      border: 1px solid #e5e5e5;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .token-summary.visible { display: block; }
+    .token-summary-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background: #fafafa;
+      border-bottom: 1px solid #e5e5e5;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+    }
+    .token-summary-list {
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    .token-summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px;
+      font-size: 10px;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .token-summary-row:last-child { border-bottom: none; }
+    .token-summary-name {
+      font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
+      font-weight: 500;
+      color: #333;
+    }
+    .token-summary-count {
+      font-weight: 500;
+      color: #18a0fb;
+      min-width: 20px;
+      text-align: right;
+    }
+    .token-summary-collection {
+      color: #aaa;
+      font-size: 9px;
+      margin-left: 6px;
+    }
+
+    /* ── Results ── */
+    .results { display: none; }
+    .results.visible { display: block; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .results-header label {
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .results-count {
+      font-size: 11px;
+      color: #999;
+    }
+
+    /* ── Category groups (accordion) ── */
+    .category {
+      margin-bottom: 4px;
+      border: 1px solid #e5e5e5;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+      cursor: pointer;
+      background: #fafafa;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .category-header:hover { background: #f0f0f0; }
+    .category-chevron {
+      font-size: 8px;
+      transition: transform 0.15s;
+      margin-left: auto;
+      color: #bbb;
+    }
+    .category.collapsed .category-chevron { transform: rotate(-90deg); }
+    .category-body {
+      padding: 0 10px;
+    }
+    .category.collapsed .category-body { display: none; }
+
+    .category-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .category-dot.Spacing { background: #18a0fb; }
+    .category-dot.Typography { background: #9747ff; }
+    .category-dot.Radius { background: #14ae5c; }
+    .category-dot.Borders { background: #ff8c00; }
+    .category-dot.Color { background: #e040fb; }
+    .category-dot.Other { background: #999; }
+
+    /* ── Match rows ── */
+    .match-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .match-row:last-child { border-bottom: none; }
+    .match-row input[type="checkbox"] {
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+    .match-info { flex: 1; min-width: 0; }
+    .match-node {
+      font-size: 11px;
+      font-weight: 500;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .match-detail {
+      font-size: 10px;
+      color: #666;
+      margin-top: 1px;
+    }
+    .match-detail .field { color: #999; }
+    .match-detail .value { font-weight: 500; color: #333; }
+    .match-arrow { color: #999; margin: 0 2px; }
+    .match-var {
+      font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .match-var.high { color: #14ae5c; }
+    .match-var.medium { color: #ff8c00; }
+    .match-var.low { color: #999; }
+    .match-collection {
+      font-size: 9px;
+      color: #aaa;
+      margin-left: 4px;
+    }
+    .color-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 3px;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+
+    /* ── Variable selector (when multiple match) ── */
+    .var-select {
+      font-family: inherit;
+      font-size: 10px;
+      padding: 2px 4px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      background: #fafafa;
+      max-width: 100%;
+    }
+
+    /* ── Notification ── */
+    .notification {
+      display: none;
+      padding: 8px 12px;
+      margin: 8px 0 0 0;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .notification.visible { display: block; }
+    .notification.success { background: #e8f5e9; color: #2e7d32; }
+    .notification.error { background: #fdecea; color: #c62828; }
+    .notification.info { background: #e3f2fd; color: #1565c0; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 24px 16px;
+      color: #999;
+    }
+    .empty-state p { margin-top: 4px; font-size: 11px; }
+
+    /* ── Error list ── */
+    .error-list {
+      margin-top: 6px;
+      padding-left: 16px;
+      font-size: 10px;
+      color: #c62828;
+    }
+    .error-list li { margin-bottom: 2px; }
+
+    /* ── Sticky apply bar ── */
+    .apply-bar {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      border-top: 1px solid #e5e5e5;
+      padding: 10px 16px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Dressing Room</h1>
+    <span id="badge" class="badge">Loading...</span>
+  </div>
+
+  <!-- Scan section -->
+  <div class="section">
+    <div style="display:flex;gap:8px;">
+      <button id="scan-btn" class="btn btn-primary" disabled style="flex:1;">Scan Selection</button>
+      <button id="strip-btn" class="btn btn-danger" disabled style="flex:0 0 auto;">Strip Tokens</button>
+    </div>
+    <div id="scan-note" class="notification info visible" style="margin-top:8px;">
+      Initializing...
+    </div>
+    <!-- Token summary (populated after scan) -->
+    <div id="token-summary" class="token-summary"></div>
+  </div>
+
+  <!-- Results section -->
+  <div id="results" class="results section">
+    <div class="results-header">
+      <label>
+        <input type="checkbox" id="select-all" checked>
+        Select all
+      </label>
+      <span id="results-count" class="results-count"></span>
+    </div>
+    <div id="results-list"></div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty-state" class="empty-state" style="display:none;">
+    <strong>No untokenized values found</strong>
+    <p>Every scanned property is either already bound to a variable or has no matching variable in your libraries.</p>
+  </div>
+
+  <!-- Sticky apply bar (shown when results exist) -->
+  <div id="apply-bar" class="apply-bar" style="display:none;">
+    <button id="apply-btn" class="btn btn-success">Apply Selected</button>
+    <div id="apply-notification" class="notification"></div>
+  </div>
+
+  <script>
+    // ─── State ──────────────────────────────────────────────────
+    var matches = [];
+    var selectedSet = new Set();
+    var chosenVar = {};
+    var collapsedCategories = {};
+
+    // ─── DOM refs ───────────────────────────────────────────────
+    var badge = document.getElementById('badge');
+    var scanBtn = document.getElementById('scan-btn');
+    var scanNote = document.getElementById('scan-note');
+    var tokenSummary = document.getElementById('token-summary');
+    var resultsEl = document.getElementById('results');
+    var resultsList = document.getElementById('results-list');
+    var resultsCount = document.getElementById('results-count');
+    var selectAll = document.getElementById('select-all');
+    var applyBar = document.getElementById('apply-bar');
+    var stripBtn = document.getElementById('strip-btn');
+    var applyBtn = document.getElementById('apply-btn');
+    var applyNotification = document.getElementById('apply-notification');
+    var emptyState = document.getElementById('empty-state');
+
+    // ─── UI field labels ────────────────────────────────────────
+    var LABEL = {
+      itemSpacing: 'Gap',
+      counterAxisSpacing: 'Cross-axis gap',
+      paddingLeft: 'Padding left',
+      paddingRight: 'Padding right',
+      paddingTop: 'Padding top',
+      paddingBottom: 'Padding bottom',
+      topLeftRadius: 'Top-left radius',
+      topRightRadius: 'Top-right radius',
+      bottomLeftRadius: 'Bottom-left radius',
+      bottomRightRadius: 'Bottom-right radius',
+      strokeWeight: 'Stroke weight',
+      fontSize: 'Font size',
+      fontFamily: 'Font family',
+      lineHeight: 'Line height',
+      letterSpacing: 'Letter spacing',
+    };
+
+    function getLabel(field) {
+      if (LABEL[field]) return LABEL[field];
+      if (field.startsWith('fill:')) return 'Fill color';
+      if (field.startsWith('stroke:')) return 'Stroke color';
+      return field;
+    }
+
+    // ─── Event handlers ─────────────────────────────────────────
+
+    scanBtn.addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'scan' } }, '*');
+      scanNote.className = 'notification info visible';
+      scanNote.textContent = 'Scanning...';
+      resultsEl.classList.remove('visible');
+      emptyState.style.display = 'none';
+      applyBar.style.display = 'none';
+      tokenSummary.classList.remove('visible');
+      applyNotification.classList.remove('visible');
+    });
+
+    stripBtn.addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'strip' } }, '*');
+      stripBtn.disabled = true;
+      stripBtn.textContent = 'Stripping...';
+      scanNote.className = 'notification info visible';
+      scanNote.textContent = 'Removing all token bindings from selection...';
+    });
+
+    selectAll.addEventListener('change', function() {
+      var checked = selectAll.checked;
+      for (var i = 0; i < matches.length; i++) {
+        if (checked) selectedSet.add(i);
+        else selectedSet.delete(i);
+      }
+      document.querySelectorAll('.match-cb').forEach(function(cb) { cb.checked = checked; });
+      updateApplyBtn();
+    });
+
+    applyBtn.addEventListener('click', function() {
+      var items = [];
+      selectedSet.forEach(function(idx) {
+        var m = matches[idx];
+        var varId = chosenVar[idx] || m.candidates[0].id;
+        items.push({ nodeId: m.nodeId, field: m.field, variableId: varId });
+      });
+      if (items.length === 0) return;
+      parent.postMessage({ pluginMessage: { type: 'apply', items: items } }, '*');
+      applyBtn.disabled = true;
+      applyBtn.textContent = 'Applying...';
+    });
+
+    // ─── Message handler ────────────────────────────────────────
+
+    window.onmessage = function(event) {
+      var msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      switch (msg.type) {
+        case 'ready':
+          badge.textContent = 'Ready';
+          badge.className = 'badge ready';
+          scanBtn.disabled = false;
+          stripBtn.disabled = false;
+          scanNote.className = 'notification info visible';
+          scanNote.textContent = 'Select frames or layers in Figma, then click Scan. Uses inferredVariables to detect matching tokens from all attached libraries.';
+          break;
+
+        case 'scanning':
+          scanNote.className = 'notification info visible';
+          scanNote.textContent = 'Scanning selected nodes...';
+          break;
+
+        case 'results':
+          matches = msg.matches;
+          selectedSet = new Set();
+          chosenVar = {};
+
+          // Build stats text
+          var statsText = '';
+          if (msg.stats) {
+            var s = msg.stats;
+            statsText = s.nodesScanned + ' nodes, ' + s.propsChecked + ' props, ' +
+              s.alreadyBound + ' bound, ' + s.noMatch + ' no match';
+          }
+
+          if (matches.length === 0) {
+            resultsEl.classList.remove('visible');
+            emptyState.style.display = 'block';
+            applyBar.style.display = 'none';
+            scanNote.className = 'notification info visible';
+            scanNote.textContent = statsText || 'No matches found.';
+            tokenSummary.classList.remove('visible');
+          } else {
+            emptyState.style.display = 'none';
+            scanNote.className = 'notification success visible';
+            scanNote.textContent = matches.length + ' tokens to apply (' + statsText + ')';
+
+            // Select all by default
+            for (var i = 0; i < matches.length; i++) selectedSet.add(i);
+            selectAll.checked = true;
+
+            renderTokenSummary();
+            renderResults();
+            resultsEl.classList.add('visible');
+            applyBar.style.display = 'block';
+          }
+          break;
+
+        case 'applied':
+          applyBtn.disabled = false;
+          applyBtn.textContent = 'Apply Selected';
+
+          var catBreakdown = '';
+          if (msg.categoryStats) {
+            var cats = Object.keys(msg.categoryStats);
+            catBreakdown = cats.map(function(cat) {
+              var s = msg.categoryStats[cat];
+              var total = s.ok + s.fail;
+              return cat + ': ' + s.ok + '/' + total;
+            }).join(' · ');
+          }
+
+          if (msg.fail === 0) {
+            applyNotification.className = 'notification success visible';
+            applyNotification.innerHTML = 'Applied ' + msg.ok + '/' + msg.ok + ' tokens.' +
+              (catBreakdown ? '<br><span style="font-size:10px;color:#666;">' + catBreakdown + '</span>' : '');
+          } else {
+            var html = 'Applied ' + msg.ok + '/' + (msg.ok + msg.fail) + ' tokens.' +
+              (catBreakdown ? '<br><span style="font-size:10px;color:#666;">' + catBreakdown + '</span>' : '');
+            if (msg.errors && msg.errors.length > 0) {
+              html += '<ul class="error-list">';
+              for (var j = 0; j < msg.errors.length; j++) html += '<li>' + escapeHtml(msg.errors[j]) + '</li>';
+              html += '</ul>';
+            }
+            applyNotification.className = 'notification ' + (msg.ok > 0 ? 'info' : 'error') + ' visible';
+            applyNotification.innerHTML = html;
+          }
+          break;
+
+        case 'stripping':
+          scanNote.className = 'notification info visible';
+          scanNote.textContent = 'Removing token bindings...';
+          break;
+
+        case 'stripped':
+          stripBtn.disabled = false;
+          stripBtn.textContent = 'Strip Tokens';
+
+          var stripBreakdown = '';
+          if (msg.categoryStats) {
+            var sCats = Object.keys(msg.categoryStats);
+            stripBreakdown = sCats.map(function(cat) {
+              return cat + ': ' + msg.categoryStats[cat];
+            }).join(' · ');
+          }
+
+          if (msg.stripped === 0) {
+            scanNote.className = 'notification info visible';
+            scanNote.textContent = 'No token bindings found to remove.';
+          } else {
+            scanNote.className = 'notification success visible';
+            scanNote.innerHTML = 'Stripped ' + msg.stripped + ' token binding' + (msg.stripped !== 1 ? 's' : '') + '.' +
+              (stripBreakdown ? '<br><span style="font-size:10px;color:#666;">' + stripBreakdown + '</span>' : '');
+          }
+          // Clear results since bindings changed
+          resultsEl.classList.remove('visible');
+          applyBar.style.display = 'none';
+          tokenSummary.classList.remove('visible');
+          break;
+
+        case 'error':
+          scanNote.className = 'notification error visible';
+          scanNote.textContent = msg.message;
+          break;
+      }
+    };
+
+    // ─── Token summary (scrollable list of detected tokens) ─────
+
+    function renderTokenSummary() {
+      // Count instances per variable name
+      var tokenCounts = {};
+      var tokenMeta = {}; // name → { collection, category }
+      for (var i = 0; i < matches.length; i++) {
+        var m = matches[i];
+        var best = chosenVar[i] ? findCandidate(m, chosenVar[i]) : m.candidates[0];
+        if (!best) continue;
+        var key = best.name;
+        tokenCounts[key] = (tokenCounts[key] || 0) + 1;
+        if (!tokenMeta[key]) {
+          tokenMeta[key] = { collection: best.collection, category: m.category };
+        }
+      }
+
+      // Sort by count descending
+      var sorted = Object.keys(tokenCounts).sort(function(a, b) {
+        return tokenCounts[b] - tokenCounts[a];
+      });
+
+      var html = '<div class="token-summary-header">';
+      html += '<span>Detected tokens</span>';
+      html += '<span>' + sorted.length + ' unique</span>';
+      html += '</div>';
+      html += '<div class="token-summary-list">';
+      for (var j = 0; j < sorted.length; j++) {
+        var name = sorted[j];
+        var meta = tokenMeta[name];
+        html += '<div class="token-summary-row">';
+        html += '<span>';
+        html += '<span class="token-summary-name">' + escapeHtml(name) + '</span>';
+        html += '<span class="token-summary-collection">' + escapeHtml(meta.collection) + '</span>';
+        html += '</span>';
+        html += '<span class="token-summary-count">' + tokenCounts[name] + 'x</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+
+      tokenSummary.innerHTML = html;
+      tokenSummary.classList.add('visible');
+    }
+
+    function findCandidate(match, varId) {
+      for (var i = 0; i < match.candidates.length; i++) {
+        if (match.candidates[i].id === varId) return match.candidates[i];
+      }
+      return match.candidates[0];
+    }
+
+    // ─── Render results grouped by category (accordion) ─────────
+
+    function renderResults() {
+      var groups = {};
+      var categoryOrder = ['Color', 'Spacing', 'Typography', 'Radius', 'Borders', 'Other'];
+
+      matches.forEach(function(m, i) {
+        var cat = m.category || 'Other';
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push({ match: m, index: i });
+      });
+
+      var html = '';
+
+      for (var c = 0; c < categoryOrder.length; c++) {
+        var cat = categoryOrder[c];
+        var items = groups[cat];
+        if (!items || items.length === 0) continue;
+
+        var isCollapsed = (collapsedCategories[cat] === false) ? '' : ' collapsed';
+        html += '<div class="category' + isCollapsed + '" data-category="' + cat + '">';
+        html += '<div class="category-header" data-category="' + cat + '">';
+        html += '<span class="category-dot ' + cat + '"></span>';
+        html += cat + ' (' + items.length + ')';
+        html += '<span class="category-chevron">&#9660;</span>';
+        html += '</div>';
+        html += '<div class="category-body">';
+
+        for (var i = 0; i < items.length; i++) {
+          var match = items[i].match;
+          var index = items[i].index;
+          var best = match.candidates[0];
+          var confClass = best.confidence === 2 ? 'high' : best.confidence === 1 ? 'medium' : 'low';
+          var isChecked = selectedSet.has(index) ? 'checked' : '';
+          var label = getLabel(match.field);
+
+          // Format raw value — with color swatch for hex colors
+          var valueStr;
+          if (typeof match.rawValue === 'string' && match.rawValue.startsWith('#')) {
+            valueStr = '<span class="color-swatch" style="background:' + match.rawValue + '"></span>' + match.rawValue;
+          } else if (typeof match.rawValue === 'number') {
+            valueStr = match.rawValue + 'px';
+          } else {
+            valueStr = '"' + escapeHtml(String(match.rawValue)) + '"';
+          }
+
+          html += '<div class="match-row">';
+          html += '<input type="checkbox" class="match-cb" data-idx="' + index + '" ' + isChecked + '>';
+          html += '<div class="match-info">';
+          html += '<div class="match-node">' + escapeHtml(match.nodeName) + '</div>';
+          html += '<div class="match-detail">';
+          html += '<span class="field">' + label + ':</span> ';
+          html += '<span class="value">' + valueStr + '</span>';
+          html += '<span class="match-arrow"> &rarr; </span>';
+
+          if (match.candidates.length > 1) {
+            html += '<select class="var-select" data-idx="' + index + '">';
+            for (var k = 0; k < match.candidates.length; k++) {
+              var cand = match.candidates[k];
+              var selected = cand.id === best.id ? ' selected' : '';
+              html += '<option value="' + cand.id + '"' + selected + '>';
+              html += cand.name + ' (' + cand.collection + ')';
+              html += '</option>';
+            }
+            html += '</select>';
+          } else {
+            html += '<span class="match-var ' + confClass + '">' + escapeHtml(best.name) + '</span>';
+            html += '<span class="match-collection">' + escapeHtml(best.collection) + '</span>';
+          }
+
+          html += '</div></div></div>';
+        }
+
+        html += '</div></div>';
+      }
+
+      resultsList.innerHTML = html;
+      resultsCount.textContent = matches.length + ' untokenized';
+      updateApplyBtn();
+
+      // Attach checkbox listeners
+      document.querySelectorAll('.match-cb').forEach(function(cb) {
+        cb.addEventListener('change', function(e) {
+          var idx = parseInt(e.target.getAttribute('data-idx'));
+          if (e.target.checked) selectedSet.add(idx);
+          else selectedSet.delete(idx);
+          updateSelectAll();
+          updateApplyBtn();
+        });
+      });
+
+      // Attach dropdown listeners
+      document.querySelectorAll('.var-select').forEach(function(sel) {
+        sel.addEventListener('change', function(e) {
+          var idx = parseInt(e.target.getAttribute('data-idx'));
+          chosenVar[idx] = e.target.value;
+        });
+      });
+
+      // Attach accordion toggle listeners
+      document.querySelectorAll('.category-header').forEach(function(hdr) {
+        hdr.addEventListener('click', function(e) {
+          var cat = e.currentTarget.getAttribute('data-category');
+          var categoryEl = e.currentTarget.parentElement;
+          categoryEl.classList.toggle('collapsed');
+          collapsedCategories[cat] = categoryEl.classList.contains('collapsed') ? true : false;
+        });
+      });
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────
+
+    function updateApplyBtn() {
+      var count = selectedSet.size;
+      applyBtn.disabled = count === 0;
+      applyBtn.textContent = count === 0
+        ? 'Apply Selected'
+        : 'Apply ' + count + ' Token' + (count !== 1 ? 's' : '');
+    }
+
+    function updateSelectAll() {
+      if (matches.length === 0) return;
+      selectAll.checked = selectedSet.size === matches.length;
+      selectAll.indeterminate = selectedSet.size > 0 && selectedSet.size < matches.length;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
