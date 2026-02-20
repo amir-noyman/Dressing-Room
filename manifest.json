@@ -1,6 +1,6 @@
 {
   "name": "Dressing Room",
-  "id": "dressing-room",
+  "id": "1606620747426339783",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
@@ -9,6 +9,7 @@
   "editorType": [
     "figma"
   ],
+  "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": ["none"]
   }
