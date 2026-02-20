@@ -4,42 +4,199 @@
   <meta charset="utf-8">
   <title>Dressing Room</title>
   <style>
+    /* ── Theme tokens ── */
+    :root {
+      --bg-gradient-from: #1E1E2E;
+      --bg-gradient-to: #2D2B55;
+      --bg-surface: rgba(30,30,46,0.95);
+      --text-primary: #fff;
+      --text-body: #E0DEF0;
+      --text-secondary: #C0BCD0;
+      --text-muted: #8880A8;
+      --text-faint: #6860A0;
+      --text-powered: #4A4668;
+      --border: rgba(255,255,255,0.08);
+      --border-light: rgba(255,255,255,0.04);
+      --border-subtle: rgba(255,255,255,0.06);
+      --surface-raised: rgba(255,255,255,0.04);
+      --surface-hover: rgba(255,255,255,0.07);
+      --surface-input: rgba(255,255,255,0.06);
+      --btn-secondary-bg: rgba(255,255,255,0.08);
+      --btn-secondary-hover: rgba(255,255,255,0.14);
+      --btn-secondary-border: rgba(255,255,255,0.12);
+      --btn-disabled-bg: rgba(255,255,255,0.08);
+      --btn-disabled-text: rgba(255,255,255,0.3);
+      --btn-disabled-border: rgba(255,255,255,0.06);
+      --swatch-border: rgba(255,255,255,0.15);
+      --battery-track: rgba(255,255,255,0.04);
+      --accent-count: #38BDF8;
+      --accent-link: #ff813f;
+      --accent-link-glow: rgba(255,129,63,0.3);
+      --notify-success-bg: rgba(74,222,128,0.12);
+      --notify-success-text: #4ADE80;
+      --notify-success-border: rgba(74,222,128,0.2);
+      --notify-error-bg: rgba(248,113,113,0.12);
+      --notify-error-text: #F87171;
+      --notify-error-border: rgba(248,113,113,0.2);
+      --notify-info-bg: rgba(99,82,220,0.12);
+      --notify-info-text: #A78BFA;
+      --notify-info-border: rgba(99,82,220,0.2);
+      --match-high: #4ADE80;
+      --match-high-glow: rgba(74,222,128,0.3);
+      --match-medium: #FB923C;
+      --match-medium-glow: rgba(251,146,60,0.3);
+      --cat-color: #4ADE80;
+      --cat-spacing: #38BDF8;
+      --cat-typography: #A78BFA;
+      --cat-radius: #FB923C;
+      --cat-borders: #F472B6;
+      --cat-other: #8880A8;
+      --glow-strength: 0.5;
+      --btn-primary-bg: #4338CA;
+      --btn-primary-hover: #5145D6;
+      --btn-primary-glow: rgba(99,82,220,0.2);
+      --btn-primary-glow-hover: rgba(99,82,220,0.5);
+      --stats-inline: #8880A8;
+    }
+
+    [data-theme="light"] {
+      --bg-gradient-from: #F4F3F8;
+      --bg-gradient-to: #EDEAF5;
+      --bg-surface: rgba(255,255,255,0.95);
+      --text-primary: #1E1E2E;
+      --text-body: #333;
+      --text-secondary: #555;
+      --text-muted: #888;
+      --text-faint: #aaa;
+      --text-powered: #bbb;
+      --border: rgba(0,0,0,0.1);
+      --border-light: rgba(0,0,0,0.05);
+      --border-subtle: rgba(0,0,0,0.06);
+      --surface-raised: rgba(0,0,0,0.03);
+      --surface-hover: rgba(0,0,0,0.06);
+      --surface-input: #fff;
+      --btn-secondary-bg: rgba(0,0,0,0.05);
+      --btn-secondary-hover: rgba(0,0,0,0.1);
+      --btn-secondary-border: rgba(0,0,0,0.12);
+      --btn-disabled-bg: rgba(0,0,0,0.05);
+      --btn-disabled-text: rgba(0,0,0,0.25);
+      --btn-disabled-border: rgba(0,0,0,0.08);
+      --swatch-border: rgba(0,0,0,0.1);
+      --battery-track: rgba(0,0,0,0.06);
+      --accent-count: #1565c0;
+      --accent-link: #e65100;
+      --accent-link-glow: none;
+      --notify-success-bg: #e8f5e9;
+      --notify-success-text: #2e7d32;
+      --notify-success-border: #c8e6c9;
+      --notify-error-bg: #fdecea;
+      --notify-error-text: #c62828;
+      --notify-error-border: #f5c6cb;
+      --notify-info-bg: #ede7f6;
+      --notify-info-text: #5e35b1;
+      --notify-info-border: #d1c4e9;
+      --match-high: #2e7d32;
+      --match-high-glow: none;
+      --match-medium: #e65100;
+      --match-medium-glow: none;
+      --cat-color: #2e7d32;
+      --cat-spacing: #1565c0;
+      --cat-typography: #7c3aed;
+      --cat-radius: #e65100;
+      --cat-borders: #c2185b;
+      --cat-other: #999;
+      --glow-strength: 0;
+      --btn-primary-bg: #4338CA;
+      --btn-primary-hover: #5145D6;
+      --btn-primary-glow: rgba(99,82,220,0.1);
+      --btn-primary-glow-hover: rgba(99,82,220,0.25);
+      --stats-inline: #888;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
       font-size: 11px;
-      color: #333;
-      background: #fff;
+      color: var(--text-body);
+      background: linear-gradient(135deg, var(--bg-gradient-from) 0%, var(--bg-gradient-to) 100%);
+      min-height: 100vh;
       line-height: 1.5;
+      display: flex;
+      flex-direction: column;
     }
 
     /* ── Header ── */
     .header {
       padding: 12px 16px;
-      border-bottom: 1px solid #e5e5e5;
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
       position: sticky;
       top: 0;
-      background: #fff;
+      background: var(--bg-surface);
+      backdrop-filter: blur(8px);
       z-index: 10;
     }
-    .header h1 { font-size: 13px; font-weight: 600; }
-    .header .badge {
-      font-size: 10px;
-      font-weight: 500;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: #f0f0f0;
-      color: #666;
+    .header h1 { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .theme-group {
+      display: inline-flex;
+      border: 1px solid var(--btn-secondary-border);
+      border-radius: 5px;
+      overflow: hidden;
+      flex-shrink: 0;
     }
-    .header .badge.ready { background: #e8f5e9; color: #2e7d32; }
+    .theme-group button {
+      width: 24px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    .theme-group button:first-child { border-right: 1px solid var(--btn-secondary-border); }
+    .theme-group button:hover { background: var(--surface-hover); }
+    .theme-group button.active {
+      background: var(--btn-primary-bg);
+      color: #fff;
+    }
+    .theme-group svg { width: 12px; height: 12px; }
 
     /* ── Sections ── */
-    .section { padding: 12px 16px; }
-    .section + .section { border-top: 1px solid #e5e5e5; }
+    .section { padding: 16px 16px; }
+    .section + .section { border-top: 1px solid var(--border); }
+
+    /* ── Battery bar ── */
+    .battery {
+      display: none;
+      margin-top: 14px;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--battery-track);
+      overflow: hidden;
+      position: relative;
+    }
+    .battery.visible { display: flex; }
+    .battery-segment {
+      height: 100%;
+      min-width: 2px;
+      transition: flex-grow 0.4s ease;
+    }
+    .battery-segment.Color { background: var(--cat-color); box-shadow: 0 0 8px rgba(74,222,128,var(--glow-strength)); }
+    .battery-segment.Spacing { background: var(--cat-spacing); box-shadow: 0 0 8px rgba(56,189,248,var(--glow-strength)); }
+    .battery-segment.Typography { background: var(--cat-typography); box-shadow: 0 0 8px rgba(167,139,250,var(--glow-strength)); }
+    .battery-segment.Radius { background: var(--cat-radius); box-shadow: 0 0 8px rgba(251,146,60,var(--glow-strength)); }
+    .battery-segment.Borders { background: var(--cat-borders); box-shadow: 0 0 8px rgba(244,114,182,var(--glow-strength)); }
+    .battery-segment.Other { background: var(--cat-other); }
+    .battery-segment:first-child { border-radius: 4px 0 0 4px; }
+    .battery-segment:last-child { border-radius: 0 4px 4px 0; }
+    .battery-segment:only-child { border-radius: 4px; }
 
     /* ── Buttons ── */
     .btn {
@@ -55,35 +212,37 @@
       font-size: 11px;
       font-weight: 500;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: background 0.15s, box-shadow 0.15s;
     }
     .btn-primary {
       width: 100%;
-      background: #18a0fb;
+      background: var(--btn-primary-bg);
       color: #fff;
+      box-shadow: 0 0 10px var(--btn-primary-glow);
     }
-    .btn-primary:hover { background: #0d8de6; }
-    .btn-primary:disabled { background: #ccc; cursor: default; }
+    .btn-primary:hover { background: var(--btn-primary-hover); box-shadow: 0 0 20px var(--btn-primary-glow-hover); }
+    .btn-primary:disabled { background: var(--btn-disabled-bg); color: var(--btn-disabled-text); box-shadow: none; cursor: default; }
     .btn-success {
       width: 100%;
       background: #1bc47d;
       color: #fff;
+      box-shadow: 0 0 12px rgba(27,196,125,0.25);
     }
-    .btn-success:hover { background: #15a86b; }
-    .btn-success:disabled { background: #ccc; cursor: default; }
-    .btn-danger {
-      background: #f5f5f5;
-      color: #c62828;
-      border: 1px solid #e0e0e0;
+    .btn-success:hover { background: #2dd891; box-shadow: 0 0 18px rgba(27,196,125,0.35); }
+    .btn-success:disabled { background: var(--btn-disabled-bg); color: var(--btn-disabled-text); box-shadow: none; cursor: default; }
+    .btn-secondary {
+      background: var(--btn-secondary-bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--btn-secondary-border);
     }
-    .btn-danger:hover { background: #fdecea; }
-    .btn-danger:disabled { background: #f5f5f5; color: #ccc; border-color: #e5e5e5; cursor: default; }
+    .btn-secondary:hover { background: var(--btn-secondary-hover); color: var(--text-body); }
+    .btn-secondary:disabled { background: var(--btn-disabled-bg); color: var(--btn-disabled-text); border-color: var(--btn-disabled-border); cursor: default; }
 
     /* ── Token summary ── */
     .token-summary {
       display: none;
-      margin-top: 10px;
-      border: 1px solid #e5e5e5;
+      margin-top: 14px;
+      border: 1px solid var(--border);
       border-radius: 6px;
       overflow: hidden;
     }
@@ -93,17 +252,15 @@
       align-items: center;
       justify-content: space-between;
       padding: 6px 10px;
-      background: #fafafa;
-      border-bottom: 1px solid #e5e5e5;
+      background: var(--surface-raised);
+      border-bottom: 1px solid var(--border);
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: #999;
+      color: var(--text-muted);
     }
     .token-summary-list {
-      max-height: 140px;
-      overflow-y: auto;
     }
     .token-summary-row {
       display: flex;
@@ -111,22 +268,22 @@
       justify-content: space-between;
       padding: 4px 10px;
       font-size: 10px;
-      border-bottom: 1px solid #f5f5f5;
+      border-bottom: 1px solid var(--border-light);
     }
     .token-summary-row:last-child { border-bottom: none; }
     .token-summary-name {
       font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
       font-weight: 500;
-      color: #333;
+      color: var(--text-body);
     }
     .token-summary-count {
       font-weight: 500;
-      color: #18a0fb;
+      color: var(--accent-count);
       min-width: 20px;
       text-align: right;
     }
     .token-summary-collection {
-      color: #aaa;
+      color: var(--text-faint);
       font-size: 9px;
       margin-left: 6px;
     }
@@ -148,16 +305,17 @@
       display: flex;
       align-items: center;
       gap: 4px;
+      color: var(--text-secondary);
     }
     .results-count {
       font-size: 11px;
-      color: #999;
+      color: var(--text-muted);
     }
 
     /* ── Category groups (accordion) ── */
     .category {
-      margin-bottom: 4px;
-      border: 1px solid #e5e5e5;
+      margin-bottom: 3px;
+      border: 1px solid var(--border);
       border-radius: 6px;
       overflow: hidden;
     }
@@ -170,18 +328,18 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: #999;
+      color: var(--text-muted);
       cursor: pointer;
-      background: #fafafa;
+      background: var(--surface-raised);
       user-select: none;
       transition: background 0.1s;
     }
-    .category-header:hover { background: #f0f0f0; }
+    .category-header:hover { background: var(--surface-hover); }
     .category-chevron {
       font-size: 8px;
       transition: transform 0.15s;
       margin-left: auto;
-      color: #bbb;
+      color: var(--text-faint);
     }
     .category.collapsed .category-chevron { transform: rotate(-90deg); }
     .category-body {
@@ -195,12 +353,12 @@
       border-radius: 50%;
       flex-shrink: 0;
     }
-    .category-dot.Spacing { background: #18a0fb; }
-    .category-dot.Typography { background: #9747ff; }
-    .category-dot.Radius { background: #14ae5c; }
-    .category-dot.Borders { background: #ff8c00; }
-    .category-dot.Color { background: #e040fb; }
-    .category-dot.Other { background: #999; }
+    .category-dot.Spacing { background: var(--cat-spacing); box-shadow: 0 0 6px rgba(56,189,248,var(--glow-strength)); }
+    .category-dot.Typography { background: var(--cat-typography); box-shadow: 0 0 6px rgba(167,139,250,var(--glow-strength)); }
+    .category-dot.Radius { background: var(--cat-radius); box-shadow: 0 0 6px rgba(251,146,60,var(--glow-strength)); }
+    .category-dot.Borders { background: var(--cat-borders); box-shadow: 0 0 6px rgba(244,114,182,var(--glow-strength)); }
+    .category-dot.Color { background: var(--cat-color); box-shadow: 0 0 6px rgba(74,222,128,var(--glow-strength)); }
+    .category-dot.Other { background: var(--cat-other); }
 
     /* ── Match rows ── */
     .match-row {
@@ -208,7 +366,7 @@
       align-items: flex-start;
       gap: 8px;
       padding: 6px 0;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid var(--border-light);
     }
     .match-row:last-child { border-bottom: none; }
     .match-row input[type="checkbox"] {
@@ -219,30 +377,30 @@
     .match-node {
       font-size: 11px;
       font-weight: 500;
-      color: #333;
+      color: var(--text-body);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .match-detail {
       font-size: 10px;
-      color: #666;
+      color: var(--text-muted);
       margin-top: 1px;
     }
-    .match-detail .field { color: #999; }
-    .match-detail .value { font-weight: 500; color: #333; }
-    .match-arrow { color: #999; margin: 0 2px; }
+    .match-detail .field { color: var(--text-faint); }
+    .match-detail .value { font-weight: 500; color: var(--text-secondary); }
+    .match-arrow { color: var(--text-faint); margin: 0 2px; }
     .match-var {
       font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
       font-size: 10px;
       font-weight: 500;
     }
-    .match-var.high { color: #14ae5c; }
-    .match-var.medium { color: #ff8c00; }
-    .match-var.low { color: #999; }
+    .match-var.high { color: var(--match-high); text-shadow: 0 0 8px var(--match-high-glow); }
+    .match-var.medium { color: var(--match-medium); text-shadow: 0 0 8px var(--match-medium-glow); }
+    .match-var.low { color: var(--text-muted); }
     .match-collection {
       font-size: 9px;
-      color: #aaa;
+      color: var(--text-faint);
       margin-left: 4px;
     }
     .color-swatch {
@@ -252,7 +410,7 @@
       border-radius: 2px;
       vertical-align: middle;
       margin-right: 3px;
-      border: 1px solid rgba(0,0,0,0.1);
+      border: 1px solid var(--swatch-border);
     }
 
     /* ── Variable selector (when multiple match) ── */
@@ -260,9 +418,10 @@
       font-family: inherit;
       font-size: 10px;
       padding: 2px 4px;
-      border: 1px solid #ddd;
+      border: 1px solid var(--btn-secondary-border);
       border-radius: 3px;
-      background: #fafafa;
+      background: var(--surface-input);
+      color: var(--text-body);
       max-width: 100%;
     }
 
@@ -270,20 +429,60 @@
     .notification {
       display: none;
       padding: 8px 12px;
-      margin: 8px 0 0 0;
+      margin: 12px 0 0 0;
       border-radius: 6px;
       font-size: 11px;
+      position: relative;
     }
     .notification.visible { display: block; }
-    .notification.success { background: #e8f5e9; color: #2e7d32; }
-    .notification.error { background: #fdecea; color: #c62828; }
-    .notification.info { background: #e3f2fd; color: #1565c0; }
+    #scan-note { padding-right: 24px; }
+    .notification .dismiss {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      right: 8px;
+      background: none;
+      border: none;
+      color: inherit;
+      opacity: 0.5;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0 2px;
+      font-family: inherit;
+    }
+    .notification .dismiss:hover { opacity: 1; }
+    .notification.success { background: var(--notify-success-bg); color: var(--notify-success-text); border: 1px solid var(--notify-success-border); }
+    .notification.error { background: var(--notify-error-bg); color: var(--notify-error-text); border: 1px solid var(--notify-error-border); }
+    .notification.info { background: var(--notify-info-bg); color: var(--notify-info-text); border: 1px solid var(--notify-info-border); }
+
+    /* ── Scan loading state ── */
+    .scan-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 16px;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .css-spinner {
+      width: 24px;
+      height: 24px;
+      border: 2.5px solid rgba(67,56,202,0.25);
+      border-top-color: #4338CA;
+      border-radius: 50%;
+      animation: css-spin 0.7s linear infinite;
+      will-change: transform;
+    }
+    @keyframes css-spin { to { transform: rotate(360deg); } }
 
     /* ── Empty state ── */
     .empty-state {
       text-align: center;
       padding: 24px 16px;
-      color: #999;
+      color: var(--text-muted);
     }
     .empty-state p { margin-top: 4px; font-size: 11px; }
 
@@ -292,33 +491,40 @@
       margin-top: 6px;
       padding-left: 16px;
       font-size: 10px;
-      color: #c62828;
+      color: var(--notify-error-text);
     }
     .error-list li { margin-bottom: 2px; }
 
-    /* ── Sticky apply bar ── */
+    /* ── Scrollable content ── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    /* ── Apply bar (footer) ── */
     .apply-bar {
-      position: sticky;
-      bottom: 0;
-      background: #fff;
-      border-top: 1px solid #e5e5e5;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
       padding: 10px 16px;
-      z-index: 10;
+      flex-shrink: 0;
     }
 
     /* ── Footer ── */
     .footer {
       padding: 10px 16px;
-      border-top: 1px solid #f0f0f0;
+      border-top: 1px solid var(--border-subtle);
       text-align: center;
       font-size: 10px;
-      color: #bbb;
+      color: var(--text-faint);
+      flex-shrink: 0;
     }
     .footer a {
-      color: #ff813f;
+      color: var(--accent-link);
       text-decoration: none;
       font-weight: 500;
       cursor: pointer;
+      text-shadow: 0 0 8px var(--accent-link-glow);
     }
     .footer a:hover { text-decoration: underline; }
   </style>
@@ -328,17 +534,25 @@
   <!-- Header -->
   <div class="header">
     <h1>Dressing Room</h1>
-    <span id="badge" class="badge">Loading...</span>
+    <div class="theme-group">
+      <button id="theme-light" title="Light mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
+      <button id="theme-dark" title="Dark mode" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+    </div>
   </div>
+
+  <!-- Scrollable content -->
+  <div class="content">
 
   <!-- Scan section -->
   <div class="section">
     <div style="display:flex;gap:8px;">
       <button id="scan-btn" class="btn btn-primary" disabled style="flex:1;">Scan Selection</button>
-      <button id="strip-btn" class="btn btn-danger" disabled style="flex:0 0 auto;">Strip Tokens</button>
+      <button id="strip-btn" class="btn btn-secondary" disabled style="flex:0 0 auto;">Strip Tokens</button>
     </div>
-    <div id="scan-note" class="notification info visible" style="margin-top:8px;">
-      Initializing...
+    <div id="battery" class="battery"></div>
+    <div id="scan-note" class="notification info visible" style="margin-top:8px;padding-right:24px;">
+      <span id="scan-note-text">Initializing...</span>
+      <button class="dismiss" onclick="this.parentElement.classList.remove('visible')">&times;</button>
     </div>
     <!-- Token summary (populated after scan) -->
     <div id="token-summary" class="token-summary"></div>
@@ -356,13 +570,21 @@
     <div id="results-list"></div>
   </div>
 
+  <!-- Scan loading -->
+  <div id="scan-loading" class="scan-loading" style="display:none;">
+    <div class="css-spinner"></div>
+    <span>Scanning layers...</span>
+  </div>
+
   <!-- Empty state -->
   <div id="empty-state" class="empty-state" style="display:none;">
     <strong>No untokenized values found</strong>
     <p>Every scanned property is either already bound to a variable or has no matching variable in your libraries.</p>
   </div>
 
-  <!-- Sticky apply bar (shown when results exist) -->
+  </div><!-- /content -->
+
+  <!-- Apply bar (shown when results exist) -->
   <div id="apply-bar" class="apply-bar" style="display:none;">
     <button id="apply-btn" class="btn btn-success">Apply Selected</button>
     <div id="apply-notification" class="notification"></div>
@@ -370,12 +592,15 @@
 
   <!-- Footer -->
   <div class="footer">
-    Made by Amir Noyman · <a id="support-link">Buy me a coffee</a>
+    Made by Amir Noyman · <a id="support-link"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:-1px;margin-right:3px;"><path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 1v3M10 1v3M14 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Buy me a coffee</a>
   </div>
+
+  <div style="margin-top:auto;padding:8px 16px 10px;text-align:center;font-size:9px;color:var(--text-powered);letter-spacing:0.5px;">Powered by <a id="foundry-link" style="color:var(--text-faint);text-decoration:none;cursor:pointer;">Foundry Design System</a></div>
 
   <script>
     // ─── Config ─────────────────────────────────────────────────
-    var BMC_URL = 'https://buymeacoffee.com/amirnoyman'; // ← update with your actual BMC page
+    var BMC_URL = 'https://buymeacoffee.com/amirno';
+    var FOUNDRY_URL = 'https://www.figma.com/design/QlRckEbTfNJhLfldXB5RH1/Foundry?node-id=3046-20195&t=EcKv3PVNUuXBoblD-1';
 
     // ─── State ──────────────────────────────────────────────────
     var matches = [];
@@ -384,9 +609,10 @@
     var collapsedCategories = {};
 
     // ─── DOM refs ───────────────────────────────────────────────
-    var badge = document.getElementById('badge');
     var scanBtn = document.getElementById('scan-btn');
     var scanNote = document.getElementById('scan-note');
+    var scanNoteText = document.getElementById('scan-note-text');
+    var battery = document.getElementById('battery');
     var tokenSummary = document.getElementById('token-summary');
     var resultsEl = document.getElementById('results');
     var resultsList = document.getElementById('results-list');
@@ -397,6 +623,7 @@
     var applyBtn = document.getElementById('apply-btn');
     var applyNotification = document.getElementById('apply-notification');
     var emptyState = document.getElementById('empty-state');
+    var scanLoading = document.getElementById('scan-loading');
 
     // ─── UI field labels ────────────────────────────────────────
     var LABEL = {
@@ -424,21 +651,43 @@
       return field;
     }
 
+    var scanTimer = null;
+
     // ─── Event handlers ─────────────────────────────────────────
+
+    // ─── Theme toggle ─────────────────────────────────────────
+    var themeLightBtn = document.getElementById('theme-light');
+    var themeDarkBtn = document.getElementById('theme-dark');
+    function setTheme(theme) {
+      document.body.setAttribute('data-theme', theme);
+      themeLightBtn.classList.toggle('active', theme === 'light');
+      themeDarkBtn.classList.toggle('active', theme === 'dark');
+    }
+    setTheme('dark'); // default
+    themeLightBtn.addEventListener('click', function() { setTheme('light'); });
+    themeDarkBtn.addEventListener('click', function() { setTheme('dark'); });
 
     document.getElementById('support-link').addEventListener('click', function() {
       parent.postMessage({ pluginMessage: { type: 'open-url', url: BMC_URL } }, '*');
     });
 
+    document.getElementById('foundry-link').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'open-url', url: FOUNDRY_URL } }, '*');
+    });
+
     scanBtn.addEventListener('click', function() {
       parent.postMessage({ pluginMessage: { type: 'scan' } }, '*');
-      scanNote.className = 'notification info visible';
-      scanNote.textContent = 'Scanning...';
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning...';
+      scanNote.className = 'notification';
+      scanNote.classList.remove('visible');
       resultsEl.classList.remove('visible');
       emptyState.style.display = 'none';
       applyBar.style.display = 'none';
       tokenSummary.classList.remove('visible');
+      hideBattery();
       applyNotification.classList.remove('visible');
+      scanLoading.style.display = 'flex';
     });
 
     stripBtn.addEventListener('click', function() {
@@ -446,7 +695,7 @@
       stripBtn.disabled = true;
       stripBtn.textContent = 'Stripping...';
       scanNote.className = 'notification info visible';
-      scanNote.textContent = 'Removing all token bindings from selection...';
+      scanNoteText.textContent = 'Removing all token bindings from selection...';
     });
 
     selectAll.addEventListener('change', function() {
@@ -478,19 +727,22 @@
       var msg = event.data.pluginMessage;
       if (!msg) return;
 
+      // Clear scan spinner and restore button on any response
+      if (msg.type === 'results' || msg.type === 'error') {
+        scanLoading.style.display = 'none';
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan Selection';
+      }
+
       switch (msg.type) {
         case 'ready':
-          badge.textContent = 'Ready';
-          badge.className = 'badge ready';
           scanBtn.disabled = false;
           stripBtn.disabled = false;
           scanNote.className = 'notification info visible';
-          scanNote.textContent = 'Select frames or layers in Figma, then click Scan. Uses inferredVariables to detect matching tokens from all attached libraries.';
+          scanNoteText.textContent = 'Select layers, then click Scan to detect matching tokens.';
           break;
 
         case 'scanning':
-          scanNote.className = 'notification info visible';
-          scanNote.textContent = 'Scanning selected nodes...';
           break;
 
         case 'results':
@@ -503,7 +755,9 @@
           if (msg.stats) {
             var s = msg.stats;
             statsText = s.nodesScanned + ' nodes, ' + s.propsChecked + ' props, ' +
-              s.alreadyBound + ' bound, ' + s.noMatch + ' no match';
+              s.alreadyBound + ' bound' +
+              (s.orphaned ? ', ' + s.orphaned + ' orphaned' : '') +
+              ', ' + s.noMatch + ' no match';
           }
 
           if (matches.length === 0) {
@@ -511,17 +765,19 @@
             emptyState.style.display = 'block';
             applyBar.style.display = 'none';
             scanNote.className = 'notification info visible';
-            scanNote.textContent = statsText || 'No matches found.';
+            scanNoteText.textContent = statsText || 'No matches found.';
             tokenSummary.classList.remove('visible');
+            hideBattery();
           } else {
             emptyState.style.display = 'none';
             scanNote.className = 'notification success visible';
-            scanNote.textContent = matches.length + ' tokens to apply (' + statsText + ')';
+            scanNoteText.textContent = matches.length + ' tokens to apply (' + statsText + ')';
 
             // Select all by default
             for (var i = 0; i < matches.length; i++) selectedSet.add(i);
             selectAll.checked = true;
 
+            renderBattery();
             renderTokenSummary();
             renderResults();
             resultsEl.classList.add('visible');
@@ -546,10 +802,10 @@
           if (msg.fail === 0) {
             applyNotification.className = 'notification success visible';
             applyNotification.innerHTML = 'Applied ' + msg.ok + '/' + msg.ok + ' tokens.' +
-              (catBreakdown ? '<br><span style="font-size:10px;color:#666;">' + catBreakdown + '</span>' : '');
+              (catBreakdown ? '<br><span style="font-size:10px;color:var(--stats-inline);">' + catBreakdown + '</span>' : '');
           } else {
             var html = 'Applied ' + msg.ok + '/' + (msg.ok + msg.fail) + ' tokens.' +
-              (catBreakdown ? '<br><span style="font-size:10px;color:#666;">' + catBreakdown + '</span>' : '');
+              (catBreakdown ? '<br><span style="font-size:10px;color:var(--stats-inline);">' + catBreakdown + '</span>' : '');
             if (msg.errors && msg.errors.length > 0) {
               html += '<ul class="error-list">';
               for (var j = 0; j < msg.errors.length; j++) html += '<li>' + escapeHtml(msg.errors[j]) + '</li>';
@@ -562,7 +818,7 @@
 
         case 'stripping':
           scanNote.className = 'notification info visible';
-          scanNote.textContent = 'Removing token bindings...';
+          scanNoteText.textContent = 'Removing token bindings...';
           break;
 
         case 'stripped':
@@ -579,24 +835,52 @@
 
           if (msg.stripped === 0) {
             scanNote.className = 'notification info visible';
-            scanNote.textContent = 'No token bindings found to remove.';
+            scanNoteText.textContent = 'No token bindings found to remove.';
           } else {
             scanNote.className = 'notification success visible';
-            scanNote.innerHTML = 'Stripped ' + msg.stripped + ' token binding' + (msg.stripped !== 1 ? 's' : '') + '.' +
-              (stripBreakdown ? '<br><span style="font-size:10px;color:#666;">' + stripBreakdown + '</span>' : '');
+            scanNoteText.innerHTML = 'Stripped ' + msg.stripped + ' token binding' + (msg.stripped !== 1 ? 's' : '') + '.' +
+              (stripBreakdown ? '<br><span style="font-size:10px;color:var(--stats-inline);">' + stripBreakdown + '</span>' : '');
           }
           // Clear results since bindings changed
           resultsEl.classList.remove('visible');
           applyBar.style.display = 'none';
           tokenSummary.classList.remove('visible');
+          hideBattery();
           break;
 
         case 'error':
           scanNote.className = 'notification error visible';
-          scanNote.textContent = msg.message;
+          scanNoteText.textContent = msg.message;
           break;
       }
     };
+
+    // ─── Battery bar (category breakdown) ─────────────────────
+
+    function renderBattery() {
+      var categoryOrder = ['Color', 'Spacing', 'Typography', 'Radius', 'Borders', 'Other'];
+      var counts = {};
+      for (var i = 0; i < matches.length; i++) {
+        var cat = matches[i].category || 'Other';
+        counts[cat] = (counts[cat] || 0) + 1;
+      }
+
+      var html = '';
+      for (var c = 0; c < categoryOrder.length; c++) {
+        var cat = categoryOrder[c];
+        var count = counts[cat];
+        if (!count) continue;
+        html += '<div class="battery-segment ' + cat + '" style="flex-grow:' + count + '" title="' + cat + ': ' + count + '"></div>';
+      }
+
+      battery.innerHTML = html;
+      battery.classList.add('visible');
+    }
+
+    function hideBattery() {
+      battery.classList.remove('visible');
+      battery.innerHTML = '';
+    }
 
     // ─── Token summary (scrollable list of detected tokens) ─────
 

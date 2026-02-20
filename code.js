@@ -46,7 +46,7 @@ class TokenApplicator {
         this.varCache = new Map();
         // Cache: collection ID → name
         this.colCache = new Map();
-        figma.showUI(__html__, { width: 420, height: 580 });
+        figma.showUI(__html__, { width: 420, height: 640 });
         figma.ui.onmessage = async (msg) => {
             try {
                 if (msg.type === 'scan')
@@ -155,7 +155,7 @@ class TokenApplicator {
         }
         figma.ui.postMessage({ type: 'scanning' });
         const matches = [];
-        const stats = { nodesScanned: 0, propsChecked: 0, alreadyBound: 0, noMatch: 0, matched: 0 };
+        const stats = { nodesScanned: 0, propsChecked: 0, alreadyBound: 0, orphaned: 0, noMatch: 0, matched: 0 };
         for (const node of sel) {
             await this.walk(node, matches, stats, 0);
         }
@@ -247,8 +247,12 @@ class TokenApplicator {
                         continue;
                     stats.propsChecked++;
                     if ((_a = fill.boundVariables) === null || _a === void 0 ? void 0 : _a.color) {
-                        stats.alreadyBound++;
-                        continue;
+                        const colorVar = await this.resolveVar(fill.boundVariables.color.id);
+                        if (colorVar) {
+                            stats.alreadyBound++;
+                            continue;
+                        }
+                        stats.orphaned++; // Orphaned — fall through to rebind
                     }
                     const fillAliases = (_b = inferred === null || inferred === void 0 ? void 0 : inferred.fills) === null || _b === void 0 ? void 0 : _b[i];
                     if (fillAliases && Array.isArray(fillAliases) && fillAliases.length > 0) {
@@ -282,8 +286,12 @@ class TokenApplicator {
                         continue;
                     stats.propsChecked++;
                     if ((_c = stroke.boundVariables) === null || _c === void 0 ? void 0 : _c.color) {
-                        stats.alreadyBound++;
-                        continue;
+                        const colorVar = await this.resolveVar(stroke.boundVariables.color.id);
+                        if (colorVar) {
+                            stats.alreadyBound++;
+                            continue;
+                        }
+                        stats.orphaned++; // Orphaned — fall through to rebind
                     }
                     const strokeAliases = (_d = inferred === null || inferred === void 0 ? void 0 : inferred.strokes) === null || _d === void 0 ? void 0 : _d[i];
                     if (strokeAliases && Array.isArray(strokeAliases) && strokeAliases.length > 0) {
@@ -316,10 +324,15 @@ class TokenApplicator {
         // Skip zero/empty values
         if (value === 0 || value === '' || value === undefined || value === null)
             return;
-        // Skip if already bound to a variable
-        if (this.isBound(node, field)) {
+        // Check if already bound to a variable
+        const bindState = await this.checkBinding(node, field);
+        if (bindState === 'bound') {
             stats.alreadyBound++;
             return;
+        }
+        if (bindState === 'orphan') {
+            stats.orphaned++;
+            // Fall through — orphaned bindings should be rebindable
         }
         // Use Figma's inferredVariables — this knows about ALL accessible variables
         // (local + library) without us having to load them manually.
@@ -359,7 +372,38 @@ class TokenApplicator {
         // No inferred variables found
         stats.noMatch++;
     }
-    /** Check if a property is already bound to a variable. */
+    /** Check if a property is already bound to a resolvable variable.
+     *  Returns 'bound' if live, 'orphan' if bound but unresolvable, 'free' if unbound. */
+    async checkBinding(node, field) {
+        var _a;
+        const bv = node.boundVariables;
+        if (!bv)
+            return 'free';
+        const val = bv[field];
+        if (val === undefined || val === null)
+            return 'free';
+        // Extract the variable ID from the binding
+        let varId;
+        if (Array.isArray(val)) {
+            if (val.length === 0)
+                return 'free';
+            varId = (_a = val[0]) === null || _a === void 0 ? void 0 : _a.id;
+        }
+        else if (typeof val === 'object' && val.id) {
+            varId = val.id;
+        }
+        if (!varId)
+            return 'bound'; // Can't determine, assume live
+        // Try to resolve — if it fails, it's an orphan
+        try {
+            const variable = await figma.variables.getVariableByIdAsync(varId);
+            return variable ? 'bound' : 'orphan';
+        }
+        catch (_b) {
+            return 'orphan';
+        }
+    }
+    /** Synchronous check for strip — just checks if any binding exists (orphan or not). */
     isBound(node, field) {
         const bv = node.boundVariables;
         if (!bv)
@@ -417,7 +461,7 @@ class TokenApplicator {
         };
         console.log('[TokenApplicator] Applying', items.length, 'bindings...');
         for (const item of items) {
-            const node = figma.getNodeById(item.nodeId);
+            const node = await figma.getNodeByIdAsync(item.nodeId);
             const label = this.getFieldLabel(item.field, node);
             try {
                 if (!node) {
