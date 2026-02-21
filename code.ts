@@ -36,11 +36,16 @@ interface ApplyItem {
   variableId: string;
 }
 
+interface UndoEntry {
+  nodeId: string;
+  field: string;
+  previousVarId: string | null;  // null = was unbound
+}
+
 interface ScanStats {
   nodesScanned: number;
   propsChecked: number;
   alreadyBound: number;
-  orphaned: number;
   noMatch: number;
   matched: number;
 }
@@ -96,6 +101,9 @@ class TokenApplicator {
   private varCache = new Map<string, { name: string; collection: string; value: number | string } | null>();
   // Cache: collection ID → name
   private colCache = new Map<string, string>();
+  // Undo stack (last action only)
+  private undoStack: UndoEntry[] = [];
+  private undoAction: 'apply' | 'strip' | null = null;
 
   constructor() {
     figma.showUI(__html__, { width: 420, height: 640 });
@@ -105,6 +113,7 @@ class TokenApplicator {
         if (msg.type === 'scan') await this.scan();
         else if (msg.type === 'apply') await this.apply(msg.items as ApplyItem[]);
         else if (msg.type === 'strip') await this.strip();
+        else if (msg.type === 'undo') await this.undo();
         else if (msg.type === 'open-url') figma.openExternal(msg.url);
         else if (msg.type === 'close') figma.closePlugin();
       } catch (err) {
@@ -206,8 +215,11 @@ class TokenApplicator {
 
     figma.ui.postMessage({ type: 'scanning' });
 
+    // Clear variable cache so stale null entries don't cause false re-detections
+    this.varCache.clear();
+
     const matches: Match[] = [];
-    const stats: ScanStats = { nodesScanned: 0, propsChecked: 0, alreadyBound: 0, orphaned: 0, noMatch: 0, matched: 0 };
+    const stats: ScanStats = { nodesScanned: 0, propsChecked: 0, alreadyBound: 0, noMatch: 0, matched: 0 };
 
     for (const node of sel) {
       await this.walk(node, matches, stats, 0);
@@ -225,7 +237,8 @@ class TokenApplicator {
   private async walk(node: SceneNode, out: Match[], stats: ScanStats, depth: number): Promise<void> {
     if (depth > 100) return;
     await this.inspect(node, out, stats);
-    if ('children' in node) {
+    // Don't walk into instance children — their properties can't be rebound
+    if ('children' in node && node.type !== 'INSTANCE') {
       for (const child of (node as any).children) {
         await this.walk(child as SceneNode, out, stats, depth + 1);
       }
@@ -259,13 +272,21 @@ class TokenApplicator {
       if (typeof n.bottomRightRadius === 'number') await this.checkField(n, 'bottomRightRadius', n.bottomRightRadius, out, stats);
     }
 
-    // ── Stroke weight (only if node has visible strokes) ──
+    // ── Stroke weight (only if node has genuinely visible strokes) ──
     if ('strokes' in node && (node as any).strokes !== figma.mixed) {
       const strokes = (node as any).strokes as readonly Paint[];
-      const hasVisibleStrokes = Array.isArray(strokes) && strokes.length > 0 &&
-        strokes.some((s: any) => s.visible !== false);
-      if (hasVisibleStrokes && 'strokeWeight' in node && typeof (node as any).strokeWeight === 'number') {
-        await this.checkField(node, 'strokeWeight', (node as any).strokeWeight, out, stats);
+      const hasRealStroke = Array.isArray(strokes) && strokes.length > 0 &&
+        strokes.some((s: any) => {
+          if (s.visible === false) return false;
+          if (s.type !== 'SOLID') return false;
+          if (typeof s.opacity === 'number' && s.opacity === 0) return false;
+          // Check the color isn't fully transparent
+          if (s.color && s.color.r === 0 && s.color.g === 0 && s.color.b === 0 && s.color.a === 0) return false;
+          return true;
+        });
+      const sw = (node as any).strokeWeight;
+      if (hasRealStroke && typeof sw === 'number' && sw > 0) {
+        await this.checkField(node, 'strokeWeight', sw, out, stats);
       }
     }
 
@@ -303,9 +324,8 @@ class TokenApplicator {
           if (fill.type !== 'SOLID' || fill.visible === false) continue;
           stats.propsChecked++;
           if (fill.boundVariables?.color) {
-            const colorVar = await this.resolveVar(fill.boundVariables.color.id);
-            if (colorVar) { stats.alreadyBound++; continue; }
-            stats.orphaned++; // Orphaned — fall through to rebind
+            stats.alreadyBound++;
+            continue;
           }
 
           const fillAliases = inferred?.fills?.[i];
@@ -338,11 +358,11 @@ class TokenApplicator {
         for (let i = 0; i < strokes.length; i++) {
           const stroke = strokes[i] as any;
           if (stroke.type !== 'SOLID' || stroke.visible === false) continue;
+          if (typeof stroke.opacity === 'number' && stroke.opacity === 0) continue;
           stats.propsChecked++;
           if (stroke.boundVariables?.color) {
-            const colorVar = await this.resolveVar(stroke.boundVariables.color.id);
-            if (colorVar) { stats.alreadyBound++; continue; }
-            stats.orphaned++; // Orphaned — fall through to rebind
+            stats.alreadyBound++;
+            continue;
           }
 
           const strokeAliases = inferred?.strokes?.[i];
@@ -384,15 +404,10 @@ class TokenApplicator {
     // Skip zero/empty values
     if (value === 0 || value === '' || value === undefined || value === null) return;
 
-    // Check if already bound to a variable
-    const bindState = await this.checkBinding(node, field);
-    if (bindState === 'bound') {
+    // Check if already bound to a variable — any binding means skip
+    if (this.isBoundToVariable(node, field)) {
       stats.alreadyBound++;
       return;
-    }
-    if (bindState === 'orphan') {
-      stats.orphaned++;
-      // Fall through — orphaned bindings should be rebindable
     }
 
     // Use Figma's inferredVariables — this knows about ALL accessible variables
@@ -438,32 +453,14 @@ class TokenApplicator {
     stats.noMatch++;
   }
 
-  /** Check if a property is already bound to a resolvable variable.
-   *  Returns 'bound' if live, 'orphan' if bound but unresolvable, 'free' if unbound. */
-  private async checkBinding(node: SceneNode, field: string): Promise<'bound' | 'orphan' | 'free'> {
+  /** Check if a property is already bound to any variable. */
+  private isBoundToVariable(node: SceneNode, field: string): boolean {
     const bv = node.boundVariables;
-    if (!bv) return 'free';
+    if (!bv) return false;
     const val = (bv as any)[field];
-    if (val === undefined || val === null) return 'free';
-
-    // Extract the variable ID from the binding
-    let varId: string | undefined;
-    if (Array.isArray(val)) {
-      if (val.length === 0) return 'free';
-      varId = val[0]?.id;
-    } else if (typeof val === 'object' && val.id) {
-      varId = val.id;
-    }
-
-    if (!varId) return 'bound'; // Can't determine, assume live
-
-    // Try to resolve — if it fails, it's an orphan
-    try {
-      const variable = await figma.variables.getVariableByIdAsync(varId);
-      return variable ? 'bound' : 'orphan';
-    } catch {
-      return 'orphan';
-    }
+    if (val === undefined || val === null) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    return true;
   }
 
   /** Synchronous check for strip — just checks if any binding exists (orphan or not). */
@@ -521,6 +518,7 @@ class TokenApplicator {
     };
 
     console.log('[TokenApplicator] Applying', items.length, 'bindings...');
+    const undoEntries: UndoEntry[] = [];
 
     for (const item of items) {
       const node = await figma.getNodeByIdAsync(item.nodeId) as SceneNode | null;
@@ -542,6 +540,9 @@ class TokenApplicator {
 
         console.log('[TokenApplicator] Binding', label, 'on "' + node.name + '" →', variable.name);
 
+        // Capture previous binding for undo
+        const prevVarId = this.getPreviousBinding(node, item.field);
+
         // ── Fill color binding ──
         if (item.field.startsWith('fill:')) {
           const fillIndex = parseInt(item.field.split(':')[1]);
@@ -551,6 +552,7 @@ class TokenApplicator {
           );
           (node as any).fills = fills;
           console.log('[TokenApplicator] ✓', label);
+          undoEntries.push({ nodeId: item.nodeId, field: item.field, previousVarId: prevVarId });
           trackOk(item.field); ok++;
           continue;
         }
@@ -564,6 +566,7 @@ class TokenApplicator {
           );
           (node as any).strokes = strokes;
           console.log('[TokenApplicator] ✓', label);
+          undoEntries.push({ nodeId: item.nodeId, field: item.field, previousVarId: prevVarId });
           trackOk(item.field); ok++;
           continue;
         }
@@ -587,6 +590,7 @@ class TokenApplicator {
         }
 
         console.log('[TokenApplicator] ✓', label);
+        undoEntries.push({ nodeId: item.nodeId, field: item.field, previousVarId: prevVarId });
         trackOk(item.field); ok++;
 
       } catch (err) {
@@ -597,7 +601,11 @@ class TokenApplicator {
     }
 
     console.log('[TokenApplicator] Done: ok=' + ok + ', fail=' + fail);
-    figma.ui.postMessage({ type: 'applied', ok, fail, errors, categoryStats: catStats });
+    if (undoEntries.length > 0) {
+      this.undoStack = undoEntries;
+      this.undoAction = 'apply';
+    }
+    figma.ui.postMessage({ type: 'applied', ok, fail, errors, categoryStats: catStats, canUndo: undoEntries.length > 0 });
   }
 
   // ─── Strip variable bindings ─────────────────────────────────
@@ -613,38 +621,47 @@ class TokenApplicator {
 
     let stripped = 0;
     const catStats: Record<string, number> = {};
+    const undoEntries: UndoEntry[] = [];
 
-    const onStrip = (cat: string) => {
+    const onStrip = (cat: string, entry: UndoEntry) => {
       stripped++;
       catStats[cat] = (catStats[cat] || 0) + 1;
+      undoEntries.push(entry);
     };
 
     for (const node of sel) {
       await this.walkStrip(node, 0, onStrip);
     }
 
+    if (undoEntries.length > 0) {
+      this.undoStack = undoEntries;
+      this.undoAction = 'strip';
+    }
+
     console.log('[TokenApplicator] Stripped', stripped, 'bindings:', JSON.stringify(catStats));
-    figma.ui.postMessage({ type: 'stripped', stripped, categoryStats: catStats });
+    figma.ui.postMessage({ type: 'stripped', stripped, categoryStats: catStats, canUndo: undoEntries.length > 0 });
   }
 
-  private async walkStrip(node: SceneNode, depth: number, onStrip: (cat: string) => void): Promise<void> {
+  private async walkStrip(node: SceneNode, depth: number, onStrip: (cat: string, entry: UndoEntry) => void): Promise<void> {
     if (depth > 100) return;
     await this.stripNode(node, onStrip);
-    if ('children' in node) {
+    // Don't walk into instance children — their properties can't be stripped
+    if ('children' in node && node.type !== 'INSTANCE') {
       for (const child of (node as any).children) {
         await this.walkStrip(child as SceneNode, depth + 1, onStrip);
       }
     }
   }
 
-  private async stripNode(node: SceneNode, onStrip: (cat: string) => void): Promise<void> {
+  private async stripNode(node: SceneNode, onStrip: (cat: string, entry: UndoEntry) => void): Promise<void> {
     // Strip scalar fields (spacing, radius, stroke weight)
     const scalarFields = Object.keys(FIELD_CATEGORY).filter(f => !TEXT_FIELDS.has(f));
     for (const field of scalarFields) {
       if (this.isBound(node, field)) {
+        const prevVarId = this.getPreviousBinding(node, field);
         try {
           node.setBoundVariable(field as VariableBindableNodeField, null);
-          onStrip(FIELD_CATEGORY[field]);
+          onStrip(FIELD_CATEGORY[field], { nodeId: node.id, field, previousVarId: prevVarId });
         } catch (e) {
           console.log('[TokenApplicator] Strip failed for', field, ':', e);
         }
@@ -657,14 +674,15 @@ class TokenApplicator {
       const textFields = ['fontFamily', 'fontSize', 'lineHeight', 'letterSpacing'];
       for (const field of textFields) {
         if (this.isBound(node, field)) {
+          const prevVarId = this.getPreviousBinding(node, field);
           try {
             node.setBoundVariable(field as any, null);
-            onStrip('Typography');
+            onStrip('Typography', { nodeId: node.id, field, previousVarId: prevVarId });
           } catch {
             try {
               const t = node as TextNode;
               t.setRangeBoundVariable(0, t.characters.length, field as VariableBindableTextField, null as any);
-              onStrip('Typography');
+              onStrip('Typography', { nodeId: node.id, field, previousVarId: prevVarId });
             } catch (e2) {
               console.log('[TokenApplicator] Strip text failed for', field, ':', e2);
             }
@@ -682,9 +700,10 @@ class TokenApplicator {
         for (let i = 0; i < fills.length; i++) {
           const fill = fills[i] as any;
           if (fill.type === 'SOLID' && fill.boundVariables?.color) {
+            const prevVarId = fill.boundVariables.color.id || null;
             newFills[i] = figma.variables.setBoundVariableForPaint(fill as SolidPaint, 'color', null);
             changed = true;
-            onStrip('Color');
+            onStrip('Color', { nodeId: node.id, field: 'fill:' + i, previousVarId: prevVarId });
           }
         }
         if (changed) (node as any).fills = newFills;
@@ -700,13 +719,152 @@ class TokenApplicator {
         for (let i = 0; i < strokes.length; i++) {
           const stroke = strokes[i] as any;
           if (stroke.type === 'SOLID' && stroke.boundVariables?.color) {
+            const prevVarId = stroke.boundVariables.color.id || null;
             newStrokes[i] = figma.variables.setBoundVariableForPaint(stroke as SolidPaint, 'color', null);
             changed = true;
-            onStrip('Color');
+            onStrip('Color', { nodeId: node.id, field: 'stroke:' + i, previousVarId: prevVarId });
           }
         }
         if (changed) (node as any).strokes = newStrokes;
       }
+    }
+  }
+
+  /** Get the current variable binding ID for a field, or null if unbound. */
+  private getPreviousBinding(node: SceneNode, field: string): string | null {
+    if (field.startsWith('fill:')) {
+      const idx = parseInt(field.split(':')[1]);
+      const fills = (node as any).fills;
+      if (Array.isArray(fills) && fills[idx]?.boundVariables?.color) {
+        return fills[idx].boundVariables.color.id || null;
+      }
+      return null;
+    }
+    if (field.startsWith('stroke:')) {
+      const idx = parseInt(field.split(':')[1]);
+      const strokes = (node as any).strokes;
+      if (Array.isArray(strokes) && strokes[idx]?.boundVariables?.color) {
+        return strokes[idx].boundVariables.color.id || null;
+      }
+      return null;
+    }
+    const bv = node.boundVariables;
+    if (!bv) return null;
+    const val = (bv as any)[field];
+    if (!val) return null;
+    if (Array.isArray(val)) return val.length > 0 ? val[0]?.id || null : null;
+    return val.id || null;
+  }
+
+  // ─── Undo last action ──────────────────────────────────────────
+
+  private async undo(): Promise<void> {
+    if (this.undoStack.length === 0) {
+      figma.ui.postMessage({ type: 'error', message: 'Nothing to undo.' });
+      return;
+    }
+
+    const action = this.undoAction;
+    const entries = this.undoStack;
+    this.undoStack = [];
+    this.undoAction = null;
+
+    let ok = 0;
+    let fail = 0;
+
+    for (const entry of entries) {
+      try {
+        const node = await figma.getNodeByIdAsync(entry.nodeId) as SceneNode | null;
+        if (!node) { fail++; continue; }
+
+        if (action === 'apply') {
+          // Undo apply: restore previous binding (or unbind if was free)
+          if (entry.previousVarId) {
+            const variable = await figma.variables.getVariableByIdAsync(entry.previousVarId);
+            if (variable) {
+              await this.bindField(node, entry.field, variable);
+            } else {
+              await this.unbindField(node, entry.field);
+            }
+          } else {
+            await this.unbindField(node, entry.field);
+          }
+          ok++;
+        } else if (action === 'strip') {
+          // Undo strip: re-bind the previously bound variable
+          if (entry.previousVarId) {
+            const variable = await figma.variables.getVariableByIdAsync(entry.previousVarId);
+            if (variable) {
+              await this.bindField(node, entry.field, variable);
+              ok++;
+            } else { fail++; }
+          } else { fail++; }
+        }
+      } catch (err) {
+        console.error('[TokenApplicator] Undo failed for', entry.field, ':', err);
+        fail++;
+      }
+    }
+
+    console.log('[TokenApplicator] Undo complete: ok=' + ok + ', fail=' + fail);
+    figma.ui.postMessage({ type: 'undone', ok, fail, total: entries.length });
+  }
+
+  /** Bind a variable to a field on a node. */
+  private async bindField(node: SceneNode, field: string, variable: Variable): Promise<void> {
+    if (field.startsWith('fill:')) {
+      const idx = parseInt(field.split(':')[1]);
+      const fills = [...((node as any).fills as Paint[])];
+      fills[idx] = figma.variables.setBoundVariableForPaint(fills[idx] as SolidPaint, 'color', variable);
+      (node as any).fills = fills;
+      return;
+    }
+    if (field.startsWith('stroke:')) {
+      const idx = parseInt(field.split(':')[1]);
+      const strokes = [...((node as any).strokes as Paint[])];
+      strokes[idx] = figma.variables.setBoundVariableForPaint(strokes[idx] as SolidPaint, 'color', variable);
+      (node as any).strokes = strokes;
+      return;
+    }
+    if (node.type === 'TEXT') await this.loadFonts(node as TextNode);
+    if (node.type === 'TEXT' && TEXT_FIELDS.has(field)) {
+      try {
+        node.setBoundVariable(field as any, variable);
+      } catch {
+        const t = node as TextNode;
+        t.setRangeBoundVariable(0, t.characters.length, field as VariableBindableTextField, variable);
+      }
+    } else {
+      node.setBoundVariable(field as VariableBindableNodeField, variable);
+    }
+  }
+
+  /** Unbind a variable from a field on a node. */
+  private async unbindField(node: SceneNode, field: string): Promise<void> {
+    if (field.startsWith('fill:')) {
+      const idx = parseInt(field.split(':')[1]);
+      const fills = [...((node as any).fills as Paint[])];
+      fills[idx] = figma.variables.setBoundVariableForPaint(fills[idx] as SolidPaint, 'color', null);
+      (node as any).fills = fills;
+      return;
+    }
+    if (field.startsWith('stroke:')) {
+      const idx = parseInt(field.split(':')[1]);
+      const strokes = [...((node as any).strokes as Paint[])];
+      strokes[idx] = figma.variables.setBoundVariableForPaint(strokes[idx] as SolidPaint, 'color', null);
+      (node as any).strokes = strokes;
+      return;
+    }
+    if (node.type === 'TEXT') await this.loadFonts(node as TextNode);
+    if (node.type === 'TEXT' && TEXT_FIELDS.has(field)) {
+      try {
+        node.setBoundVariable(field as any, null);
+      } catch {
+        const t = node as TextNode;
+        t.setRangeBoundVariable(0, t.characters.length, field as VariableBindableTextField, null as any);
+      }
+    } else {
+      node.setBoundVariable(field as VariableBindableNodeField, null);
     }
   }
 
