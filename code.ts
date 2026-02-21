@@ -63,9 +63,9 @@ const FIELD_LABEL: Record<string, string> = {
   topRightRadius: 'Top-right radius',
   bottomLeftRadius: 'Bottom-left radius',
   bottomRightRadius: 'Bottom-right radius',
-  strokeWeight: 'Stroke weight',
   fontSize: 'Font size',
   fontFamily: 'Font family',
+  fontWeight: 'Font weight',
   lineHeight: 'Line height',
   letterSpacing: 'Letter spacing',
 };
@@ -81,9 +81,9 @@ const FIELD_CATEGORY: Record<string, string> = {
   topRightRadius: 'Radius',
   bottomLeftRadius: 'Radius',
   bottomRightRadius: 'Radius',
-  strokeWeight: 'Borders',
   fontSize: 'Typography',
   fontFamily: 'Typography',
+  fontWeight: 'Typography',
   lineHeight: 'Typography',
   letterSpacing: 'Typography',
 };
@@ -99,8 +99,19 @@ const TEXT_FIELDS = new Set([
 class TokenApplicator {
   // Cache: variable ID → resolved info (avoids repeated async lookups)
   private varCache = new Map<string, { name: string; collection: string; value: number | string } | null>();
+  // Pre-loaded map of ALL local variable IDs → resolved info
+  // Built once per scan using only getLocalVariablesAsync (never getVariableByIdAsync)
+  // to avoid triggering mode duplication on library variable collections.
+  private localVarMap = new Map<string, { name: string; collection: string; value: number | string }>();
   // Cache: collection ID → name
   private colCache = new Map<string, string>();
+  // Cache: all available color variables for manual matching fallback
+  private colorVarCache: { id: string; name: string; collection: string; r: number; g: number; b: number }[] | null = null;
+  // Cache: all available FLOAT and STRING variables for manual matching fallback
+  private floatVarCache: { id: string; name: string; collection: string; value: number }[] | null = null;
+  private stringVarCache: { id: string; name: string; collection: string; value: string }[] | null = null;
+  // Cache: available text styles for text style matching
+  private textStyleCache: { id: string; key: string; name: string; fontFamily: string; fontStyle: string; fontSize: number; lineHeight: { unit: string; value: number } | null; letterSpacing: { unit: string; value: number } | null }[] | null = null;
   // Undo stack (last action only)
   private undoStack: UndoEntry[] = [];
   private undoAction: 'apply' | 'strip' | null = null;
@@ -135,73 +146,100 @@ class TokenApplicator {
       console.log('[TokenApplicator] Could not cache collections:', e);
     }
 
-    // Also try to cache library collection names
-    try {
-      const libCols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
-      console.log('[TokenApplicator] Found', libCols.length, 'library collections:', libCols.map(c => c.name).join(', '));
-    } catch (e) {
-      console.log('[TokenApplicator] Library collections not available:', e);
-    }
-
     figma.ui.postMessage({ type: 'ready' });
   }
 
   // ─── Resolve a VariableAlias to display info ──────────────────
 
-  /** Resolve a variable ID to its name, collection, and value. */
+  /**
+   * Resolve a variable ID to its name, collection, and value.
+   * Uses ONLY the pre-built localVarMap — never calls getVariableByIdAsync,
+   * because that API triggers mode duplication on library variable collections.
+   */
   private async resolveVar(id: string): Promise<{ name: string; collection: string; value: number | string } | null> {
     if (this.varCache.has(id)) return this.varCache.get(id)!;
 
-    try {
-      const v = await figma.variables.getVariableByIdAsync(id);
-      if (!v) {
-        this.varCache.set(id, null);
-        return null;
-      }
+    // Look up in local variable map (built during scan from getLocalVariablesAsync)
+    const local = this.localVarMap.get(id);
+    if (local) {
+      this.varCache.set(id, local);
+      return local;
+    }
 
-      // Get collection name
-      let colName = this.colCache.get(v.variableCollectionId);
-      if (!colName) {
-        try {
-          const col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
-          colName = col ? col.name : 'Library';
-          this.colCache.set(v.variableCollectionId, colName);
-        } catch {
-          colName = 'Library';
-        }
-      }
+    // Not a local variable — this is a library variable from inferredVariables.
+    // We deliberately skip it to avoid triggering mode duplication.
+    this.varCache.set(id, null);
+    return null;
+  }
 
-      // Resolve value
+  /**
+   * Pre-load ALL local variables into localVarMap in a single pass.
+   * Resolves alias chains ONLY through other local variables (never calls getVariableByIdAsync).
+   * Also pre-builds colorVarCache, floatVarCache, and stringVarCache for manual matching.
+   */
+  private async buildLocalVarMap(): Promise<void> {
+    this.localVarMap.clear();
+
+    // First pass: load all local variables into a temporary map
+    const allVars = new Map<string, Variable>();
+    for (const type of ['COLOR', 'FLOAT', 'STRING'] as const) {
+      try {
+        const vars = await figma.variables.getLocalVariablesAsync(type);
+        for (const v of vars) allVars.set(v.id, v);
+      } catch (e) {
+        console.log('[TokenApplicator] Error loading local', type, 'variables:', e);
+      }
+    }
+
+    // Pre-build typed caches
+    const colors: { id: string; name: string; collection: string; r: number; g: number; b: number }[] = [];
+    const floats: { id: string; name: string; collection: string; value: number }[] = [];
+    const strings: { id: string; name: string; collection: string; value: string }[] = [];
+
+    // Second pass: resolve values (alias chains followed ONLY through local variables)
+    for (const [id, v] of allVars) {
+      const colName = this.colCache.get(v.variableCollectionId) || 'Local';
       const modeId = Object.keys(v.valuesByMode)[0];
-      let val: any = modeId ? v.valuesByMode[modeId] : null;
+      if (!modeId) continue;
+      let val: any = v.valuesByMode[modeId];
 
-      // Follow alias chain
+      // Follow alias chain ONLY through local variables
       let depth = 0;
       while (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS' && depth < 10) {
-        const next = await figma.variables.getVariableByIdAsync(val.id);
-        if (!next) break;
+        const next = allVars.get(val.id);
+        if (!next) break; // Target is not local — stop resolving
         const nextMode = Object.keys(next.valuesByMode)[0];
         if (!nextMode) break;
         val = next.valuesByMode[nextMode];
         depth++;
       }
 
-      let resolved: number | string;
-      if (typeof val === 'number' || typeof val === 'string') {
-        resolved = val;
+      // Store resolved value in appropriate caches
+      if (typeof val === 'number') {
+        this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
+        if (v.resolvedType === 'FLOAT') {
+          floats.push({ id, name: v.name, collection: colName, value: val });
+        }
+      } else if (typeof val === 'string') {
+        this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
+        if (v.resolvedType === 'STRING') {
+          strings.push({ id, name: v.name, collection: colName, value: val });
+        }
       } else if (val && typeof val === 'object' && 'r' in val && 'g' in val && 'b' in val) {
-        resolved = this.rgbaToHex(val as { r: number; g: number; b: number });
-      } else {
-        resolved = 0;
+        const hex = this.rgbaToHex(val as { r: number; g: number; b: number });
+        this.localVarMap.set(id, { name: v.name, collection: colName, value: hex });
+        if (v.resolvedType === 'COLOR') {
+          colors.push({ id, name: v.name, collection: colName, r: val.r, g: val.g, b: val.b });
+        }
       }
-
-      const info = { name: v.name, collection: colName, value: resolved };
-      this.varCache.set(id, info);
-      return info;
-    } catch {
-      this.varCache.set(id, null);
-      return null;
     }
+
+    this.colorVarCache = colors;
+    this.floatVarCache = floats;
+    this.stringVarCache = strings;
+
+    console.log('[TokenApplicator] Built local var map:', this.localVarMap.size, 'variables (' +
+      colors.length + ' color, ' + floats.length + ' float, ' + strings.length + ' string)');
   }
 
   // ─── Scan selected nodes ──────────────────────────────────────
@@ -215,8 +253,17 @@ class TokenApplicator {
 
     figma.ui.postMessage({ type: 'scanning' });
 
-    // Clear variable cache so stale null entries don't cause false re-detections
+    // Clear caches so stale entries don't cause false re-detections
     this.varCache.clear();
+    this.colorVarCache = null;
+    this.floatVarCache = null;
+    this.stringVarCache = null;
+    this.textStyleCache = null;
+
+    // Pre-load ALL local variables in one pass — this builds localVarMap
+    // and all typed caches WITHOUT calling getVariableByIdAsync (which
+    // triggers mode duplication on library variable collections).
+    await this.buildLocalVarMap();
 
     const matches: Match[] = [];
     const stats: ScanStats = { nodesScanned: 0, propsChecked: 0, alreadyBound: 0, noMatch: 0, matched: 0 };
@@ -237,8 +284,7 @@ class TokenApplicator {
   private async walk(node: SceneNode, out: Match[], stats: ScanStats, depth: number): Promise<void> {
     if (depth > 100) return;
     await this.inspect(node, out, stats);
-    // Don't walk into instance children — their properties can't be rebound
-    if ('children' in node && node.type !== 'INSTANCE') {
+    if ('children' in node) {
       for (const child of (node as any).children) {
         await this.walk(child as SceneNode, out, stats, depth + 1);
       }
@@ -272,50 +318,171 @@ class TokenApplicator {
       if (typeof n.bottomRightRadius === 'number') await this.checkField(n, 'bottomRightRadius', n.bottomRightRadius, out, stats);
     }
 
-    // ── Stroke weight (only if node has genuinely visible strokes) ──
-    if ('strokes' in node && (node as any).strokes !== figma.mixed) {
-      const strokes = (node as any).strokes as readonly Paint[];
-      const hasRealStroke = Array.isArray(strokes) && strokes.length > 0 &&
-        strokes.some((s: any) => {
-          if (s.visible === false) return false;
-          if (s.type !== 'SOLID') return false;
-          if (typeof s.opacity === 'number' && s.opacity === 0) return false;
-          // Check the color isn't fully transparent
-          if (s.color && s.color.r === 0 && s.color.g === 0 && s.color.b === 0 && s.color.a === 0) return false;
-          return true;
-        });
-      const sw = (node as any).strokeWeight;
-      if (hasRealStroke && typeof sw === 'number' && sw > 0) {
-        await this.checkField(node, 'strokeWeight', sw, out, stats);
-      }
-    }
+    // Note: strokeWeight scanning disabled — bindings don't reliably persist
+    // on component variants and instances, causing phantom re-detections.
 
     // ── Text properties ──
+    // Each field is wrapped in its own try/catch so a failure in one
+    // (e.g. fontFamily) doesn't prevent detection of the others.
     if (node.type === 'TEXT') {
       const t = node as TextNode;
 
-      if (typeof t.fontSize === 'number') {
-        await this.checkField(t, 'fontSize', t.fontSize, out, stats);
-      }
-      if (t.fontName !== figma.mixed) {
-        await this.checkField(t, 'fontFamily', (t.fontName as FontName).family, out, stats);
-      }
-      if (t.lineHeight !== figma.mixed) {
-        const lh = t.lineHeight as LineHeight;
-        if (lh.unit === 'PIXELS') {
-          await this.checkField(t, 'lineHeight', lh.value, out, stats);
+      try {
+        if (typeof t.fontSize === 'number') {
+          await this.checkField(t, 'fontSize', t.fontSize, out, stats);
         }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking fontSize:', e);
       }
-      if (t.letterSpacing !== figma.mixed) {
-        const ls = t.letterSpacing as LetterSpacing;
-        if (ls.unit === 'PIXELS' && ls.value !== 0) {
-          await this.checkField(t, 'letterSpacing', ls.value, out, stats);
+
+      try {
+        if (t.fontName !== figma.mixed) {
+          await this.checkField(t, 'fontFamily', (t.fontName as FontName).family, out, stats);
         }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking fontFamily:', e);
+      }
+
+      try {
+        const fw = (t as any).fontWeight;
+        if (fw !== undefined && fw !== figma.mixed && typeof fw === 'number') {
+          await this.checkField(t, 'fontWeight', fw, out, stats);
+        }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking fontWeight:', e);
+      }
+
+      try {
+        if (t.lineHeight !== figma.mixed) {
+          const lh = t.lineHeight as LineHeight;
+          if (lh.unit === 'PIXELS') {
+            await this.checkField(t, 'lineHeight', lh.value, out, stats);
+          }
+        }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking lineHeight:', e);
+      }
+
+      try {
+        if (t.letterSpacing !== figma.mixed) {
+          const ls = t.letterSpacing as LetterSpacing;
+          if (ls.unit === 'PIXELS' && ls.value !== 0) {
+            await this.checkField(t, 'letterSpacing', ls.value, out, stats);
+          }
+        }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking letterSpacing:', e);
+      }
+
+      // ── Text style matching ──
+      // If the node has no text style applied, try to match its properties to one
+      try {
+        const styleId = (t as any).textStyleId;
+        const hasStyle = styleId && styleId !== '' && styleId !== figma.mixed;
+        if (!hasStyle) {
+          const match = await this.findTextStyleMatch(t);
+          if (match) {
+            stats.propsChecked++;
+            stats.matched++;
+            out.push({
+              nodeId: t.id,
+              nodeName: t.name,
+              field: 'textStyle',
+              rawValue: match.description,
+              category: 'Text Style',
+              candidates: [{
+                id: match.id + '|' + match.key,  // encode both style ID and key
+                name: match.name,
+                collection: 'Text Styles',
+                value: match.description,
+                confidence: 3, // highest confidence — full style match
+              }],
+            });
+          }
+        }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking text style:', e);
+      }
+
+      // ── Text fill color ──
+      // Handled here (not in generic fill check) because text fills
+      // are often figma.mixed even when all characters share the same color.
+      try {
+        let textFills: Paint[] | null = null;
+
+        if ((t as any).fills !== figma.mixed) {
+          textFills = (t as any).fills as Paint[];
+        } else {
+          // Mixed fills — sample first character to get its fill
+          if (t.characters.length > 0) {
+            const rangeFills = t.getRangeFills(0, 1);
+            if (rangeFills !== figma.mixed && Array.isArray(rangeFills)) {
+              textFills = rangeFills as Paint[];
+            }
+          }
+        }
+
+        console.log('[TokenApplicator] TEXT "' + t.name + '" fills:', textFills ? JSON.stringify(textFills.map((f: any) => ({ type: f.type, color: f.color ? this.rgbaToHex(f.color) : '?', bound: !!f.boundVariables?.color }))) : 'null');
+
+        if (textFills && Array.isArray(textFills)) {
+          const inferred = (t as any).inferredVariables;
+          for (let i = 0; i < textFills.length; i++) {
+            const fill = textFills[i] as any;
+            if (fill.type !== 'SOLID' || fill.visible === false) continue;
+            stats.propsChecked++;
+            if (fill.boundVariables?.color) {
+              stats.alreadyBound++;
+              continue;
+            }
+
+            let found = false;
+
+            // Primary: use Figma's inferredVariables
+            const fillAliases = inferred?.fills?.[i];
+            if (fillAliases && Array.isArray(fillAliases) && fillAliases.length > 0) {
+              const alias = fillAliases[0];
+              const info = await this.resolveVar(alias.id);
+              if (info) {
+                stats.matched++;
+                out.push({
+                  nodeId: t.id, nodeName: t.name,
+                  field: 'fill:' + i,
+                  rawValue: this.rgbaToHex(fill.color),
+                  category: 'Color',
+                  candidates: [{ id: alias.id, name: info.name, collection: info.collection, value: info.value, confidence: 2 }],
+                });
+                found = true;
+              }
+            }
+
+            // Fallback: manual color variable search
+            if (!found) {
+              console.log('[TokenApplicator] inferredVariables missed text fill, trying manual match for', this.rgbaToHex(fill.color));
+              const manualCandidates = await this.findColorMatch(fill.color);
+              console.log('[TokenApplicator] Manual match found', manualCandidates.length, 'candidates');
+              if (manualCandidates.length > 0) {
+                stats.matched++;
+                out.push({
+                  nodeId: t.id, nodeName: t.name,
+                  field: 'fill:' + i,
+                  rawValue: this.rgbaToHex(fill.color),
+                  category: 'Color',
+                  candidates: manualCandidates,
+                });
+                found = true;
+              }
+            }
+
+            if (!found) stats.noMatch++;
+          }
+        }
+      } catch (e) {
+        console.log('[TokenApplicator] Error checking text fill color:', e);
       }
     }
 
-    // ── Fill colors ──
-    if ('fills' in node && (node as any).fills !== figma.mixed) {
+    // ── Fill colors (non-text nodes) ──
+    if (node.type !== 'TEXT' && 'fills' in node && (node as any).fills !== figma.mixed) {
       const fills = (node as any).fills as readonly Paint[];
       if (Array.isArray(fills)) {
         const inferred = (node as any).inferredVariables;
@@ -328,9 +495,11 @@ class TokenApplicator {
             continue;
           }
 
+          let found = false;
+
+          // Primary: use Figma's inferredVariables
           const fillAliases = inferred?.fills?.[i];
           if (fillAliases && Array.isArray(fillAliases) && fillAliases.length > 0) {
-            // Take first candidate only — multiple tokens can resolve to same color
             const alias = fillAliases[0];
             const info = await this.resolveVar(alias.id);
             if (info) {
@@ -342,10 +511,27 @@ class TokenApplicator {
                 category: 'Color',
                 candidates: [{ id: alias.id, name: info.name, collection: info.collection, value: info.value, confidence: 2 }],
               });
-              continue;
+              found = true;
             }
           }
-          stats.noMatch++;
+
+          // Fallback: manual color variable search
+          if (!found) {
+            const manualCandidates = await this.findColorMatch(fill.color);
+            if (manualCandidates.length > 0) {
+              stats.matched++;
+              out.push({
+                nodeId: node.id, nodeName: node.name,
+                field: 'fill:' + i,
+                rawValue: this.rgbaToHex(fill.color),
+                category: 'Color',
+                candidates: manualCandidates,
+              });
+              found = true;
+            }
+          }
+
+          if (!found) stats.noMatch++;
         }
       }
     }
@@ -365,6 +551,9 @@ class TokenApplicator {
             continue;
           }
 
+          let found = false;
+
+          // Primary: use Figma's inferredVariables
           const strokeAliases = inferred?.strokes?.[i];
           if (strokeAliases && Array.isArray(strokeAliases) && strokeAliases.length > 0) {
             const alias = strokeAliases[0];
@@ -378,10 +567,27 @@ class TokenApplicator {
                 category: 'Color',
                 candidates: [{ id: alias.id, name: info.name, collection: info.collection, value: info.value, confidence: 2 }],
               });
-              continue;
+              found = true;
             }
           }
-          stats.noMatch++;
+
+          // Fallback: manual color variable search
+          if (!found) {
+            const manualCandidates = await this.findColorMatch(stroke.color);
+            if (manualCandidates.length > 0) {
+              stats.matched++;
+              out.push({
+                nodeId: node.id, nodeName: node.name,
+                field: 'stroke:' + i,
+                rawValue: this.rgbaToHex(stroke.color),
+                category: 'Color',
+                candidates: manualCandidates,
+              });
+              found = true;
+            }
+          }
+
+          if (!found) stats.noMatch++;
         }
       }
     }
@@ -449,7 +655,29 @@ class TokenApplicator {
       }
     }
 
-    // No inferred variables found
+    // Fallback: manual variable search when inferredVariables fails
+    let manualCandidates: Candidate[] = [];
+    if (typeof value === 'string') {
+      manualCandidates = await this.findStringMatch(value);
+    } else if (typeof value === 'number') {
+      manualCandidates = await this.findFloatMatch(value);
+    }
+
+    if (manualCandidates.length > 0) {
+      console.log('[TokenApplicator] Manual match for', field, '=', value, '→', manualCandidates.map(c => c.name).join(', '));
+      stats.matched++;
+      out.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        field,
+        rawValue: value,
+        category: FIELD_CATEGORY[field] || 'Other',
+        candidates: manualCandidates,
+      });
+      return;
+    }
+
+    // No match found at all
     stats.noMatch++;
   }
 
@@ -483,8 +711,183 @@ class TokenApplicator {
     return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
   }
 
+  /** Get pre-loaded color variables for manual matching.
+   *  Built by buildLocalVarMap() — no getVariableByIdAsync calls. */
+  private async getColorVariables(): Promise<{ id: string; name: string; collection: string; r: number; g: number; b: number }[]> {
+    if (!this.colorVarCache) await this.buildLocalVarMap();
+    return this.colorVarCache!;
+  }
+
+  /** Check if two colors match (Figma uses 0-1 range, tolerance handles rounding). */
+  private colorsMatch(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
+    // Tolerance of ~1/255 to handle rounding differences
+    const tol = 0.005;
+    return Math.abs(a.r - b.r) < tol && Math.abs(a.g - b.g) < tol && Math.abs(a.b - b.b) < tol;
+  }
+
+  /** Manual fallback: find color variables matching a given RGB color. */
+  private async findColorMatch(color: { r: number; g: number; b: number }): Promise<Candidate[]> {
+    const colorVars = await this.getColorVariables();
+    const candidates: Candidate[] = [];
+
+    for (const cv of colorVars) {
+      if (this.colorsMatch(color, cv)) {
+        candidates.push({
+          id: cv.id,
+          name: cv.name,
+          collection: cv.collection,
+          value: this.rgbaToHex(cv),
+          confidence: 1, // lower than inferredVariables (confidence: 2)
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  /** Get pre-loaded string variables for manual matching.
+   *  Built by buildLocalVarMap() — no getVariableByIdAsync calls. */
+  private async getStringVariables(): Promise<{ id: string; name: string; collection: string; value: string }[]> {
+    if (!this.stringVarCache) await this.buildLocalVarMap();
+    return this.stringVarCache!;
+  }
+
+  /** Get pre-loaded float variables for manual matching.
+   *  Built by buildLocalVarMap() — no getVariableByIdAsync calls. */
+  private async getFloatVariables(): Promise<{ id: string; name: string; collection: string; value: number }[]> {
+    if (!this.floatVarCache) await this.buildLocalVarMap();
+    return this.floatVarCache!;
+  }
+
+  /** Manual fallback: find STRING variables matching a given value. */
+  private async findStringMatch(value: string): Promise<Candidate[]> {
+    const stringVars = await this.getStringVariables();
+    const candidates: Candidate[] = [];
+    const lower = value.toLowerCase();
+
+    for (const sv of stringVars) {
+      if (sv.value.toLowerCase() === lower) {
+        candidates.push({
+          id: sv.id,
+          name: sv.name,
+          collection: sv.collection,
+          value: sv.value,
+          confidence: 1,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  /** Manual fallback: find FLOAT variables matching a given numeric value. */
+  private async findFloatMatch(value: number): Promise<Candidate[]> {
+    const floatVars = await this.getFloatVariables();
+    const candidates: Candidate[] = [];
+    const tol = 0.01; // tolerance for floating point comparison
+
+    for (const fv of floatVars) {
+      if (Math.abs(fv.value - value) < tol) {
+        candidates.push({
+          id: fv.id,
+          name: fv.name,
+          collection: fv.collection,
+          value: fv.value,
+          confidence: 1,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  /** Load all available text styles (local) for text style matching. */
+  private async getTextStyles(): Promise<typeof this.textStyleCache> {
+    if (this.textStyleCache) return this.textStyleCache;
+
+    const result: NonNullable<typeof this.textStyleCache> = [];
+    const seenIds = new Set<string>();
+
+    /** Extract text style properties into our cache format. */
+    const extract = (style: TextStyle) => {
+      if (seenIds.has(style.id)) return;
+      seenIds.add(style.id);
+
+      let lh: { unit: string; value: number } | null = null;
+      if (style.lineHeight && (style.lineHeight as any).unit === 'PIXELS') {
+        lh = { unit: 'PIXELS', value: (style.lineHeight as any).value };
+      } else if (style.lineHeight && (style.lineHeight as any).unit === 'PERCENT') {
+        lh = { unit: 'PERCENT', value: (style.lineHeight as any).value };
+      }
+
+      let ls: { unit: string; value: number } | null = null;
+      if (style.letterSpacing && (style.letterSpacing as any).unit === 'PIXELS') {
+        ls = { unit: 'PIXELS', value: (style.letterSpacing as any).value };
+      } else if (style.letterSpacing && (style.letterSpacing as any).unit === 'PERCENT') {
+        ls = { unit: 'PERCENT', value: (style.letterSpacing as any).value };
+      }
+
+      result.push({
+        id: style.id,
+        key: style.key,
+        name: style.name,
+        fontFamily: style.fontName.family,
+        fontStyle: style.fontName.style,
+        fontSize: style.fontSize,
+        lineHeight: lh,
+        letterSpacing: ls,
+      });
+    };
+
+    // 1. Local text styles (defined in this file)
+    try {
+      const localStyles = await figma.getLocalTextStylesAsync();
+      for (const style of localStyles) extract(style);
+    } catch (e) {
+      console.log('[TokenApplicator] Error loading local text styles:', e);
+    }
+
+    console.log('[TokenApplicator] Cached', result.length, 'local text styles');
+    this.textStyleCache = result;
+    return result;
+  }
+
+  /** Find a text style matching the given text node properties. */
+  private async findTextStyleMatch(t: TextNode): Promise<{ id: string; key: string; name: string; description: string } | null> {
+    if (t.fontName === figma.mixed || t.fontSize === (figma.mixed as any)) return null;
+
+    const font = t.fontName as FontName;
+    const size = t.fontSize as number;
+    const styles = await this.getTextStyles();
+    if (!styles || styles.length === 0) {
+      console.log('[TokenApplicator] No text styles available to match against');
+      return null;
+    }
+
+    console.log('[TokenApplicator] Matching text: family="' + font.family + '" style="' + font.style + '" size=' + size);
+    console.log('[TokenApplicator] Available text styles (' + styles.length + '):');
+    for (const s of styles) {
+      console.log('  "' + s.name + '": family="' + s.fontFamily + '" style="' + s.fontStyle + '" size=' + s.fontSize);
+    }
+
+    for (const style of styles) {
+      // Must match: font family (case-insensitive), font style (case-insensitive), font size
+      if (style.fontFamily.toLowerCase() !== font.family.toLowerCase()) continue;
+      if (style.fontStyle.toLowerCase() !== font.style.toLowerCase()) continue;
+      if (Math.abs(style.fontSize - size) > 0.5) continue;
+
+      const desc = font.family + ' ' + font.style + ' ' + size + 'px';
+      console.log('[TokenApplicator] ✓ Matched text style: "' + style.name + '" (id=' + style.id + ', key=' + style.key + ')');
+      return { id: style.id, key: style.key, name: style.name, description: desc };
+    }
+
+    console.log('[TokenApplicator] No text style matched');
+    return null;
+  }
+
   /** Get human-readable label for a field (handles dynamic fill:/stroke: fields). */
   private getFieldLabel(field: string, node?: SceneNode | null): string {
+    if (field === 'textStyle') return 'Text style';
     if (FIELD_LABEL[field]) return FIELD_LABEL[field];
     if (field.startsWith('fill:')) return node?.type === 'TEXT' ? 'Text color' : 'Fill color';
     if (field.startsWith('stroke:')) return 'Stroke color';
@@ -493,6 +896,7 @@ class TokenApplicator {
 
   /** Get category for a field (handles dynamic fill:/stroke: fields). */
   private getFieldCategory(field: string): string {
+    if (field === 'textStyle') return 'Text Style';
     if (FIELD_CATEGORY[field]) return FIELD_CATEGORY[field];
     if (field.startsWith('fill:') || field.startsWith('stroke:')) return 'Color';
     return 'Other';
@@ -528,6 +932,56 @@ class TokenApplicator {
         if (!node) {
           errors.push(label + ': Node not found');
           trackFail(item.field); fail++;
+          continue;
+        }
+
+        // ── Text style application (uses style ID, not variable ID) ──
+        if (item.field === 'textStyle') {
+          if (node.type !== 'TEXT') {
+            errors.push(label + ': Not a text node');
+            trackFail(item.field); fail++;
+            continue;
+          }
+          const t = node as TextNode;
+          await this.loadFonts(t);
+          const prevStyleId = (typeof t.textStyleId === 'string' && t.textStyleId) ? t.textStyleId : null;
+
+          // Decode style ID from the encoded candidate ID
+          const styleId = item.variableId.split('|')[0];
+          console.log('[TokenApplicator] Applying text style on "' + t.name + '" → id="' + styleId + '"');
+
+          let styleApplied = false;
+
+          // Approach 1: direct style ID assignment
+          try {
+            t.textStyleId = styleId;
+            if (t.textStyleId === styleId) {
+              styleApplied = true;
+            } else {
+              console.log('[TokenApplicator] textStyleId did not stick, got:', t.textStyleId);
+            }
+          } catch (e1) {
+            console.log('[TokenApplicator] Direct textStyleId failed:', e1);
+          }
+
+          // Approach 2: range-based
+          if (!styleApplied) {
+            try {
+              t.setRangeTextStyleId(0, t.characters.length, styleId);
+              styleApplied = true;
+            } catch (e2) {
+              console.log('[TokenApplicator] setRangeTextStyleId also failed:', e2);
+            }
+          }
+
+          if (styleApplied) {
+            console.log('[TokenApplicator] ✓', label);
+            undoEntries.push({ nodeId: item.nodeId, field: 'textStyle', previousVarId: prevStyleId });
+            trackOk(item.field); ok++;
+          } else {
+            errors.push(label + ': Could not apply text style');
+            trackFail(item.field); fail++;
+          }
           continue;
         }
 
@@ -645,8 +1099,7 @@ class TokenApplicator {
   private async walkStrip(node: SceneNode, depth: number, onStrip: (cat: string, entry: UndoEntry) => void): Promise<void> {
     if (depth > 100) return;
     await this.stripNode(node, onStrip);
-    // Don't walk into instance children — their properties can't be stripped
-    if ('children' in node && node.type !== 'INSTANCE') {
+    if ('children' in node) {
       for (const child of (node as any).children) {
         await this.walkStrip(child as SceneNode, depth + 1, onStrip);
       }
@@ -668,10 +1121,25 @@ class TokenApplicator {
       }
     }
 
+    // Strip text style
+    if (node.type === 'TEXT') {
+      const t = node as TextNode;
+      const styleId = typeof t.textStyleId === 'string' ? t.textStyleId : '';
+      if (styleId) {
+        try {
+          await this.loadFonts(t);
+          t.textStyleId = '';
+          onStrip('Text Style', { nodeId: node.id, field: 'textStyle', previousVarId: styleId });
+        } catch (e) {
+          console.log('[TokenApplicator] Strip text style failed:', e);
+        }
+      }
+    }
+
     // Strip text fields
     if (node.type === 'TEXT') {
       await this.loadFonts(node as TextNode);
-      const textFields = ['fontFamily', 'fontSize', 'lineHeight', 'letterSpacing'];
+      const textFields = ['fontFamily', 'fontWeight', 'fontSize', 'lineHeight', 'letterSpacing'];
       for (const field of textFields) {
         if (this.isBound(node, field)) {
           const prevVarId = this.getPreviousBinding(node, field);
@@ -776,6 +1244,21 @@ class TokenApplicator {
       try {
         const node = await figma.getNodeByIdAsync(entry.nodeId) as SceneNode | null;
         if (!node) { fail++; continue; }
+
+        // Text style undo — uses style ID, not variable ID
+        if (entry.field === 'textStyle' && node.type === 'TEXT') {
+          const t = node as TextNode;
+          await this.loadFonts(t);
+          if (action === 'apply') {
+            // Undo apply: restore previous style (or remove style)
+            t.textStyleId = entry.previousVarId || '';
+          } else if (action === 'strip') {
+            // Undo strip: re-apply the style
+            if (entry.previousVarId) t.textStyleId = entry.previousVarId;
+          }
+          ok++;
+          continue;
+        }
 
         if (action === 'apply') {
           // Undo apply: restore previous binding (or unbind if was free)

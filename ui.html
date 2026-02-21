@@ -60,9 +60,9 @@
     }
 
     [data-theme="light"] {
-      --bg-gradient-from: #F4F3F8;
-      --bg-gradient-to: #EDEAF5;
-      --bg-surface: rgba(255,255,255,0.95);
+      --bg-gradient-from: #ffffff;
+      --bg-gradient-to: #ffffff;
+      --bg-surface: #ffffff;
       --text-primary: #1E1E2E;
       --text-body: #333;
       --text-secondary: #555;
@@ -867,11 +867,14 @@
 
           if (matches.length === 0) {
             resultsEl.classList.remove('visible');
+            hideBattery();
             applyBtn.disabled = true;
             applyBtn.textContent = 'Apply Selected';
           } else {
             for (var si = 0; si < matches.length; si++) selectedSet.add(si);
             selectAll.checked = true;
+            renderBattery();
+            renderTokenSummary();
             renderResults();
             applyBtn.disabled = false;
             updateApplyBtn();
