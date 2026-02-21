@@ -14,7 +14,7 @@
       --text-secondary: #C0BCD0;
       --text-muted: #8880A8;
       --text-faint: #6860A0;
-      --text-powered: #4A4668;
+      --text-powered: #7A7494;
       --border: rgba(255,255,255,0.08);
       --border-light: rgba(255,255,255,0.04);
       --border-subtle: rgba(255,255,255,0.06);
@@ -30,8 +30,10 @@
       --swatch-border: rgba(255,255,255,0.15);
       --battery-track: rgba(255,255,255,0.04);
       --accent-count: #38BDF8;
-      --accent-link: #ff813f;
-      --accent-link-glow: rgba(255,129,63,0.3);
+      --accent-link: #A78BFA;
+      --accent-link-hover: #C4B5FD;
+      --accent-link-glow: rgba(167,139,250,0.3);
+      --accent-link-glow-hover: rgba(167,139,250,0.6);
       --notify-success-bg: rgba(74,222,128,0.12);
       --notify-success-text: #4ADE80;
       --notify-success-border: rgba(74,222,128,0.2);
@@ -84,8 +86,10 @@
       --swatch-border: rgba(0,0,0,0.1);
       --battery-track: rgba(0,0,0,0.06);
       --accent-count: #1565c0;
-      --accent-link: #e65100;
+      --accent-link: #7C3AED;
+      --accent-link-hover: #6D28D9;
       --accent-link-glow: none;
+      --accent-link-glow-hover: rgba(124,58,237,0.25);
       --notify-success-bg: #e8f5e9;
       --notify-success-text: #2e7d32;
       --notify-success-border: #c8e6c9;
@@ -559,7 +563,8 @@
       cursor: pointer;
       text-shadow: 0 0 8px var(--accent-link-glow);
     }
-    .footer a:hover { text-decoration: underline; }
+    .footer a:hover { text-decoration: underline; color: var(--accent-link-hover); text-shadow: 0 0 12px var(--accent-link-glow-hover); }
+    .footer a { transition: color 0.15s, text-shadow 0.15s; }
   </style>
 </head>
 <body>
@@ -631,7 +636,7 @@
     Made by Amir Noyman · <a id="support-link"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:-1px;margin-right:3px;"><path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 1v3M10 1v3M14 1v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Buy me a coffee</a>
   </div>
 
-  <div style="margin-top:auto;padding:8px 16px 10px;text-align:center;font-size:9px;color:var(--text-powered);letter-spacing:0.5px;">Powered by <a id="foundry-link" style="color:var(--text-faint);text-decoration:none;cursor:pointer;">Foundry Design System</a></div>
+  <div style="margin-top:auto;padding:8px 16px 10px;text-align:center;font-size:9px;color:var(--text-powered);letter-spacing:0.5px;">Powered by <a id="foundry-link" style="color:var(--accent-link);text-decoration:none;cursor:pointer;font-weight:500;text-shadow:0 0 8px var(--accent-link-glow);">Foundry Design System</a></div>
 
   <script>
     // ─── Config ─────────────────────────────────────────────────

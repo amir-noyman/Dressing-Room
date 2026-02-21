@@ -158,6 +158,10 @@ class TokenApplicator {
                 val = next.valuesByMode[nextMode];
                 depth++;
             }
+            // Skip z-index variables — not applicable to visual properties
+            const nameLower = v.name.toLowerCase();
+            if (nameLower.includes('z-index') || nameLower.includes('z_index') || nameLower.includes('zindex'))
+                continue;
             // Store resolved value in appropriate caches
             if (typeof val === 'number') {
                 this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
