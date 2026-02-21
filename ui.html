@@ -786,9 +786,6 @@
           break;
 
         case 'applied':
-          applyBtn.disabled = false;
-          applyBtn.textContent = 'Apply Selected';
-
           var catBreakdown = '';
           if (msg.categoryStats) {
             var cats = Object.keys(msg.categoryStats);
@@ -799,20 +796,36 @@
             }).join(' · ');
           }
 
+          var total = msg.ok + msg.fail;
           if (msg.fail === 0) {
             applyNotification.className = 'notification success visible';
-            applyNotification.innerHTML = 'Applied ' + msg.ok + '/' + msg.ok + ' tokens.' +
-              (catBreakdown ? '<br><span style="font-size:10px;color:var(--stats-inline);">' + catBreakdown + '</span>' : '');
+            applyNotification.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:-1px;margin-right:4px;"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Applied ' + msg.ok + '/' + total + ' tokens.';
           } else {
-            var html = 'Applied ' + msg.ok + '/' + (msg.ok + msg.fail) + ' tokens.' +
-              (catBreakdown ? '<br><span style="font-size:10px;color:var(--stats-inline);">' + catBreakdown + '</span>' : '');
-            if (msg.errors && msg.errors.length > 0) {
-              html += '<ul class="error-list">';
-              for (var j = 0; j < msg.errors.length; j++) html += '<li>' + escapeHtml(msg.errors[j]) + '</li>';
-              html += '</ul>';
-            }
             applyNotification.className = 'notification ' + (msg.ok > 0 ? 'info' : 'error') + ' visible';
-            applyNotification.innerHTML = html;
+            applyNotification.innerHTML = 'Applied ' + msg.ok + '/' + total + ' tokens.';
+          }
+
+          // Remove successfully applied matches
+          var applied = new Set();
+          selectedSet.forEach(function(idx) { applied.add(idx); });
+          var remaining = [];
+          for (var ri = 0; ri < matches.length; ri++) {
+            if (!applied.has(ri)) remaining.push(matches[ri]);
+          }
+          matches = remaining;
+          selectedSet = new Set();
+          chosenVar = {};
+
+          if (matches.length === 0) {
+            resultsEl.classList.remove('visible');
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Apply Selected';
+          } else {
+            for (var si = 0; si < matches.length; si++) selectedSet.add(si);
+            selectAll.checked = true;
+            renderResults();
+            applyBtn.disabled = false;
+            updateApplyBtn();
           }
           break;
 
