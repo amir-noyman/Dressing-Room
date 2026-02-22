@@ -39,6 +39,25 @@ const TEXT_FIELDS = new Set([
     'fontFamily', 'fontSize', 'fontStyle', 'fontWeight',
     'lineHeight', 'letterSpacing', 'paragraphSpacing', 'paragraphIndent',
 ]);
+// Maps each scannable field to the Figma VariableScope it requires.
+// Variables with ALL_SCOPES or an empty scopes array always pass.
+const FIELD_SCOPE = {
+    itemSpacing: 'GAP',
+    counterAxisSpacing: 'GAP',
+    paddingLeft: 'GAP',
+    paddingRight: 'GAP',
+    paddingTop: 'GAP',
+    paddingBottom: 'GAP',
+    topLeftRadius: 'CORNER_RADIUS',
+    topRightRadius: 'CORNER_RADIUS',
+    bottomLeftRadius: 'CORNER_RADIUS',
+    bottomRightRadius: 'CORNER_RADIUS',
+    fontSize: 'FONT_SIZE',
+    fontFamily: 'FONT_FAMILY',
+    fontWeight: 'FONT_WEIGHT',
+    lineHeight: 'LINE_HEIGHT',
+    letterSpacing: 'LETTER_SPACING',
+};
 // ─── Main Plugin Class ─────────────────────────────────────────
 class TokenApplicator {
     constructor() {
@@ -163,16 +182,17 @@ class TokenApplicator {
             if (nameLower.includes('z-index') || nameLower.includes('z_index') || nameLower.includes('zindex'))
                 continue;
             // Store resolved value in appropriate caches
+            const scopes = v.scopes || [];
             if (typeof val === 'number') {
                 this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
                 if (v.resolvedType === 'FLOAT') {
-                    floats.push({ id, name: v.name, collection: colName, value: val });
+                    floats.push({ id, name: v.name, collection: colName, value: val, scopes });
                 }
             }
             else if (typeof val === 'string') {
                 this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
                 if (v.resolvedType === 'STRING') {
-                    strings.push({ id, name: v.name, collection: colName, value: val });
+                    strings.push({ id, name: v.name, collection: colName, value: val, scopes });
                 }
             }
             else if (val && typeof val === 'object' && 'r' in val && 'g' in val && 'b' in val) {
@@ -574,12 +594,14 @@ class TokenApplicator {
             }
         }
         // Fallback: manual variable search when inferredVariables fails
+        // Pass field name so scope filtering prevents cross-property matches
+        // (e.g. opacity variables won't match border-radius fields)
         let manualCandidates = [];
         if (typeof value === 'string') {
-            manualCandidates = await this.findStringMatch(value);
+            manualCandidates = await this.findStringMatch(value, field);
         }
         else if (typeof value === 'number') {
-            manualCandidates = await this.findFloatMatch(value);
+            manualCandidates = await this.findFloatMatch(value, field);
         }
         if (manualCandidates.length > 0) {
             console.log('[TokenApplicator] Manual match for', field, '=', value, '→', manualCandidates.map(c => c.name).join(', '));
@@ -673,39 +695,55 @@ class TokenApplicator {
             await this.buildLocalVarMap();
         return this.floatVarCache;
     }
-    /** Manual fallback: find STRING variables matching a given value. */
-    async findStringMatch(value) {
+    /** Check if a variable's scopes allow it to be used for a given field. */
+    scopeAllows(scopes, field) {
+        // No scopes defined = unrestricted (like ALL_SCOPES)
+        if (!scopes || scopes.length === 0)
+            return true;
+        if (scopes.includes('ALL_SCOPES'))
+            return true;
+        const required = FIELD_SCOPE[field];
+        if (!required)
+            return true; // Unknown field — allow
+        return scopes.includes(required);
+    }
+    /** Manual fallback: find STRING variables matching a given value, respecting scopes. */
+    async findStringMatch(value, field) {
         const stringVars = await this.getStringVariables();
         const candidates = [];
         const lower = value.toLowerCase();
         for (const sv of stringVars) {
-            if (sv.value.toLowerCase() === lower) {
-                candidates.push({
-                    id: sv.id,
-                    name: sv.name,
-                    collection: sv.collection,
-                    value: sv.value,
-                    confidence: 1,
-                });
-            }
+            if (sv.value.toLowerCase() !== lower)
+                continue;
+            if (field && !this.scopeAllows(sv.scopes, field))
+                continue;
+            candidates.push({
+                id: sv.id,
+                name: sv.name,
+                collection: sv.collection,
+                value: sv.value,
+                confidence: 1,
+            });
         }
         return candidates;
     }
-    /** Manual fallback: find FLOAT variables matching a given numeric value. */
-    async findFloatMatch(value) {
+    /** Manual fallback: find FLOAT variables matching a given numeric value, respecting scopes. */
+    async findFloatMatch(value, field) {
         const floatVars = await this.getFloatVariables();
         const candidates = [];
         const tol = 0.01; // tolerance for floating point comparison
         for (const fv of floatVars) {
-            if (Math.abs(fv.value - value) < tol) {
-                candidates.push({
-                    id: fv.id,
-                    name: fv.name,
-                    collection: fv.collection,
-                    value: fv.value,
-                    confidence: 1,
-                });
-            }
+            if (Math.abs(fv.value - value) >= tol)
+                continue;
+            if (field && !this.scopeAllows(fv.scopes, field))
+                continue;
+            candidates.push({
+                id: fv.id,
+                name: fv.name,
+                collection: fv.collection,
+                value: fv.value,
+                confidence: 1,
+            });
         }
         return candidates;
     }

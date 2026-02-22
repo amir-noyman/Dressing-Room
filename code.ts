@@ -94,6 +94,26 @@ const TEXT_FIELDS = new Set([
   'lineHeight', 'letterSpacing', 'paragraphSpacing', 'paragraphIndent',
 ]);
 
+// Maps each scannable field to the Figma VariableScope it requires.
+// Variables with ALL_SCOPES or an empty scopes array always pass.
+const FIELD_SCOPE: Record<string, string> = {
+  itemSpacing: 'GAP',
+  counterAxisSpacing: 'GAP',
+  paddingLeft: 'GAP',
+  paddingRight: 'GAP',
+  paddingTop: 'GAP',
+  paddingBottom: 'GAP',
+  topLeftRadius: 'CORNER_RADIUS',
+  topRightRadius: 'CORNER_RADIUS',
+  bottomLeftRadius: 'CORNER_RADIUS',
+  bottomRightRadius: 'CORNER_RADIUS',
+  fontSize: 'FONT_SIZE',
+  fontFamily: 'FONT_FAMILY',
+  fontWeight: 'FONT_WEIGHT',
+  lineHeight: 'LINE_HEIGHT',
+  letterSpacing: 'LETTER_SPACING',
+};
+
 // ─── Main Plugin Class ─────────────────────────────────────────
 
 class TokenApplicator {
@@ -108,8 +128,8 @@ class TokenApplicator {
   // Cache: all available color variables for manual matching fallback
   private colorVarCache: { id: string; name: string; collection: string; r: number; g: number; b: number }[] | null = null;
   // Cache: all available FLOAT and STRING variables for manual matching fallback
-  private floatVarCache: { id: string; name: string; collection: string; value: number }[] | null = null;
-  private stringVarCache: { id: string; name: string; collection: string; value: string }[] | null = null;
+  private floatVarCache: { id: string; name: string; collection: string; value: number; scopes: string[] }[] | null = null;
+  private stringVarCache: { id: string; name: string; collection: string; value: string; scopes: string[] }[] | null = null;
   // Cache: available text styles for text style matching
   private textStyleCache: { id: string; key: string; name: string; fontFamily: string; fontStyle: string; fontSize: number; lineHeight: { unit: string; value: number } | null; letterSpacing: { unit: string; value: number } | null }[] | null = null;
   // Undo stack (last action only)
@@ -193,8 +213,8 @@ class TokenApplicator {
 
     // Pre-build typed caches
     const colors: { id: string; name: string; collection: string; r: number; g: number; b: number }[] = [];
-    const floats: { id: string; name: string; collection: string; value: number }[] = [];
-    const strings: { id: string; name: string; collection: string; value: string }[] = [];
+    const floats: { id: string; name: string; collection: string; value: number; scopes: string[] }[] = [];
+    const strings: { id: string; name: string; collection: string; value: string; scopes: string[] }[] = [];
 
     // Second pass: resolve values (alias chains followed ONLY through local variables)
     for (const [id, v] of allVars) {
@@ -219,15 +239,16 @@ class TokenApplicator {
       if (nameLower.includes('z-index') || nameLower.includes('z_index') || nameLower.includes('zindex')) continue;
 
       // Store resolved value in appropriate caches
+      const scopes = (v as any).scopes || [];
       if (typeof val === 'number') {
         this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
         if (v.resolvedType === 'FLOAT') {
-          floats.push({ id, name: v.name, collection: colName, value: val });
+          floats.push({ id, name: v.name, collection: colName, value: val, scopes });
         }
       } else if (typeof val === 'string') {
         this.localVarMap.set(id, { name: v.name, collection: colName, value: val });
         if (v.resolvedType === 'STRING') {
-          strings.push({ id, name: v.name, collection: colName, value: val });
+          strings.push({ id, name: v.name, collection: colName, value: val, scopes });
         }
       } else if (val && typeof val === 'object' && 'r' in val && 'g' in val && 'b' in val) {
         const hex = this.rgbaToHex(val as { r: number; g: number; b: number });
@@ -660,11 +681,13 @@ class TokenApplicator {
     }
 
     // Fallback: manual variable search when inferredVariables fails
+    // Pass field name so scope filtering prevents cross-property matches
+    // (e.g. opacity variables won't match border-radius fields)
     let manualCandidates: Candidate[] = [];
     if (typeof value === 'string') {
-      manualCandidates = await this.findStringMatch(value);
+      manualCandidates = await this.findStringMatch(value, field);
     } else if (typeof value === 'number') {
-      manualCandidates = await this.findFloatMatch(value);
+      manualCandidates = await this.findFloatMatch(value, field);
     }
 
     if (manualCandidates.length > 0) {
@@ -751,55 +774,65 @@ class TokenApplicator {
 
   /** Get pre-loaded string variables for manual matching.
    *  Built by buildLocalVarMap() — no getVariableByIdAsync calls. */
-  private async getStringVariables(): Promise<{ id: string; name: string; collection: string; value: string }[]> {
+  private async getStringVariables(): Promise<{ id: string; name: string; collection: string; value: string; scopes: string[] }[]> {
     if (!this.stringVarCache) await this.buildLocalVarMap();
     return this.stringVarCache!;
   }
 
   /** Get pre-loaded float variables for manual matching.
    *  Built by buildLocalVarMap() — no getVariableByIdAsync calls. */
-  private async getFloatVariables(): Promise<{ id: string; name: string; collection: string; value: number }[]> {
+  private async getFloatVariables(): Promise<{ id: string; name: string; collection: string; value: number; scopes: string[] }[]> {
     if (!this.floatVarCache) await this.buildLocalVarMap();
     return this.floatVarCache!;
   }
 
-  /** Manual fallback: find STRING variables matching a given value. */
-  private async findStringMatch(value: string): Promise<Candidate[]> {
+  /** Check if a variable's scopes allow it to be used for a given field. */
+  private scopeAllows(scopes: string[], field: string): boolean {
+    // No scopes defined = unrestricted (like ALL_SCOPES)
+    if (!scopes || scopes.length === 0) return true;
+    if (scopes.includes('ALL_SCOPES')) return true;
+    const required = FIELD_SCOPE[field];
+    if (!required) return true; // Unknown field — allow
+    return scopes.includes(required);
+  }
+
+  /** Manual fallback: find STRING variables matching a given value, respecting scopes. */
+  private async findStringMatch(value: string, field?: string): Promise<Candidate[]> {
     const stringVars = await this.getStringVariables();
     const candidates: Candidate[] = [];
     const lower = value.toLowerCase();
 
     for (const sv of stringVars) {
-      if (sv.value.toLowerCase() === lower) {
-        candidates.push({
-          id: sv.id,
-          name: sv.name,
-          collection: sv.collection,
-          value: sv.value,
-          confidence: 1,
-        });
-      }
+      if (sv.value.toLowerCase() !== lower) continue;
+      if (field && !this.scopeAllows(sv.scopes, field)) continue;
+      candidates.push({
+        id: sv.id,
+        name: sv.name,
+        collection: sv.collection,
+        value: sv.value,
+        confidence: 1,
+      });
     }
 
     return candidates;
   }
 
-  /** Manual fallback: find FLOAT variables matching a given numeric value. */
-  private async findFloatMatch(value: number): Promise<Candidate[]> {
+  /** Manual fallback: find FLOAT variables matching a given numeric value, respecting scopes. */
+  private async findFloatMatch(value: number, field?: string): Promise<Candidate[]> {
     const floatVars = await this.getFloatVariables();
     const candidates: Candidate[] = [];
     const tol = 0.01; // tolerance for floating point comparison
 
     for (const fv of floatVars) {
-      if (Math.abs(fv.value - value) < tol) {
-        candidates.push({
-          id: fv.id,
-          name: fv.name,
-          collection: fv.collection,
-          value: fv.value,
-          confidence: 1,
-        });
-      }
+      if (Math.abs(fv.value - value) >= tol) continue;
+      if (field && !this.scopeAllows(fv.scopes, field)) continue;
+      candidates.push({
+        id: fv.id,
+        name: fv.name,
+        collection: fv.collection,
+        value: fv.value,
+        confidence: 1,
+      });
     }
 
     return candidates;
@@ -1371,6 +1404,7 @@ class TokenApplicator {
       }
     }
   }
+
 }
 
 // ─── Start ──────────────────────────────────────────────────────

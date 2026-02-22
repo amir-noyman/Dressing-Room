@@ -608,10 +608,10 @@
     <div id="results-list"></div>
   </div>
 
-  <!-- Scan loading -->
+  <!-- Loading spinner (shared for scan + apply) -->
   <div id="scan-loading" class="scan-loading" style="display:none;">
     <div class="css-spinner"></div>
-    <span>Scanning layers...</span>
+    <span id="loading-text">Scanning layers...</span>
   </div>
 
   <!-- Empty state -->
@@ -619,6 +619,7 @@
     <strong>No untokenized values found</strong>
     <p>Every scanned property is either already bound to a variable or has no matching variable in your libraries.</p>
   </div>
+
 
   </div><!-- /content -->
 
@@ -682,6 +683,7 @@
     }
     var emptyState = document.getElementById('empty-state');
     var scanLoading = document.getElementById('scan-loading');
+    var loadingText = document.getElementById('loading-text');
 
     // ─── UI field labels ────────────────────────────────────────
     var LABEL = {
@@ -746,6 +748,7 @@
       hideBattery();
       undoBtn.style.display = 'none';
       applyBtn.style.display = '';
+      loadingText.textContent = 'Scanning layers...';
       scanLoading.style.display = 'flex';
     });
 
@@ -779,6 +782,9 @@
       applyBtn.disabled = true;
       applyBtn.textContent = 'Applying...';
       undoBtn.style.display = 'none';
+      resultsEl.classList.remove('visible');
+      loadingText.textContent = 'Applying ' + items.length + ' token' + (items.length !== 1 ? 's' : '') + '...';
+      scanLoading.style.display = 'flex';
     });
 
     undoBtn.addEventListener('click', function() {
@@ -852,6 +858,7 @@
           break;
 
         case 'applied':
+          scanLoading.style.display = 'none';
           var total = msg.ok + msg.fail;
           if (msg.fail === 0) {
             showSnackbar(checkSvg + 'Applied ' + msg.ok + '/' + total + ' tokens.', 'success');
@@ -1150,6 +1157,7 @@
     function escapeHtml(str) {
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
+
   </script>
 </body>
 </html>
