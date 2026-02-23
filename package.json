@@ -1,5 +1,5 @@
 {
-  "name": "dressing-room",
+  "name": "token-shmoken",
   "version": "1.0.0",
   "description": "Figma plugin that scans for untokenized values and rebinds matching design token variables",
   "main": "code.js",

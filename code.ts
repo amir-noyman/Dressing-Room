@@ -1,7 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 /* ================================================================ */
-/* DRESSING ROOM                                                     */
+/* TOKEN SHMOKEN                                                     */
 /* Scans selected Figma nodes for raw (untokenized) values and      */
 /* suggests matching variables to bind — works with both local and  */
 /* library variables via Figma's inferredVariables API.              */
@@ -63,6 +63,7 @@ const FIELD_LABEL: Record<string, string> = {
   topRightRadius: 'Top-right radius',
   bottomLeftRadius: 'Bottom-left radius',
   bottomRightRadius: 'Bottom-right radius',
+  strokeWeight: 'Stroke weight',
   fontSize: 'Font size',
   fontFamily: 'Font family',
   fontWeight: 'Font weight',
@@ -81,6 +82,7 @@ const FIELD_CATEGORY: Record<string, string> = {
   topRightRadius: 'Radius',
   bottomLeftRadius: 'Radius',
   bottomRightRadius: 'Radius',
+  strokeWeight: 'Borders',
   fontSize: 'Typography',
   fontFamily: 'Typography',
   fontWeight: 'Typography',
@@ -107,6 +109,7 @@ const FIELD_SCOPE: Record<string, string> = {
   topRightRadius: 'CORNER_RADIUS',
   bottomLeftRadius: 'CORNER_RADIUS',
   bottomRightRadius: 'CORNER_RADIUS',
+  strokeWeight: 'STROKE_FLOAT',
   fontSize: 'FONT_SIZE',
   fontFamily: 'FONT_FAMILY',
   fontWeight: 'FONT_WEIGHT',
@@ -119,9 +122,8 @@ const FIELD_SCOPE: Record<string, string> = {
 class TokenApplicator {
   // Cache: variable ID → resolved info (avoids repeated async lookups)
   private varCache = new Map<string, { name: string; collection: string; value: number | string } | null>();
-  // Pre-loaded map of ALL local variable IDs → resolved info
-  // Built once per scan using only getLocalVariablesAsync (never getVariableByIdAsync)
-  // to avoid triggering mode duplication on library variable collections.
+  // Pre-loaded map of variable IDs → resolved info (local + library variables).
+  // Built once per scan: local via getLocalVariablesAsync, library via teamLibrary APIs.
   private localVarMap = new Map<string, { name: string; collection: string; value: number | string }>();
   // Cache: collection ID → name
   private colCache = new Map<string, string>();
@@ -132,6 +134,10 @@ class TokenApplicator {
   private stringVarCache: { id: string; name: string; collection: string; value: string; scopes: string[] }[] | null = null;
   // Cache: available text styles for text style matching
   private textStyleCache: { id: string; key: string; name: string; fontFamily: string; fontStyle: string; fontSize: number; lineHeight: { unit: string; value: number } | null; letterSpacing: { unit: string; value: number } | null }[] | null = null;
+  // Tracks bindings applied in this session (nodeId:field keys).
+  // Prevents phantom re-detections when Figma doesn't persist bindings in boundVariables
+  // (known issue with strokeWeight on component variants and instances).
+  private appliedBindings = new Set<string>();
   // Undo stack (last action only)
   private undoStack: UndoEntry[] = [];
   private undoAction: 'apply' | 'strip' | null = null;
@@ -158,43 +164,112 @@ class TokenApplicator {
   }
 
   private async init(): Promise<void> {
+    let libCount = 0;
     try {
       const cols = await figma.variables.getLocalVariableCollectionsAsync();
       for (const c of cols) this.colCache.set(c.id, c.name);
-      console.log('[TokenApplicator] Cached', cols.length, 'local collections');
+
+      // Discover linked library collections
+      try {
+        const libCols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+        libCount = libCols.length;
+      } catch (e) {
+        // teamLibrary API may not be available in all contexts
+      }
+
+      console.log('[TokenApplicator] Ready:', cols.length, 'local +', libCount, 'library collections');
     } catch (e) {
       console.log('[TokenApplicator] Could not cache collections:', e);
     }
 
-    figma.ui.postMessage({ type: 'ready' });
+    figma.ui.postMessage({ type: 'ready', libraryCount: libCount });
   }
 
   // ─── Resolve a VariableAlias to display info ──────────────────
 
   /**
    * Resolve a variable ID to its name, collection, and value.
-   * Uses ONLY the pre-built localVarMap — never calls getVariableByIdAsync,
-   * because that API triggers mode duplication on library variable collections.
+   * Checks the pre-built varMap first (local + library variables loaded during scan).
+   * Falls back to getVariableByIdAsync for variables missed during map building
+   * (e.g. library variables only referenced via inferredVariables).
    */
   private async resolveVar(id: string): Promise<{ name: string; collection: string; value: number | string } | null> {
     if (this.varCache.has(id)) return this.varCache.get(id)!;
 
-    // Look up in local variable map (built during scan from getLocalVariablesAsync)
-    const local = this.localVarMap.get(id);
-    if (local) {
-      this.varCache.set(id, local);
-      return local;
+    // Look up in pre-built variable map (local + library variables)
+    const cached = this.localVarMap.get(id);
+    if (cached) {
+      this.varCache.set(id, cached);
+      return cached;
     }
 
-    // Not a local variable — this is a library variable from inferredVariables.
-    // We deliberately skip it to avoid triggering mode duplication.
+    // Not in pre-built map — resolve via getVariableByIdAsync
+    // (handles library variables referenced by inferredVariables)
+    try {
+      const v = await figma.variables.getVariableByIdAsync(id);
+      if (v) {
+        const colName = await this.fetchCollectionName(v.variableCollectionId);
+        const modeId = Object.keys(v.valuesByMode)[0];
+        if (modeId) {
+          let val: any = v.valuesByMode[modeId];
+
+          // Follow alias chain (limited depth)
+          let depth = 0;
+          while (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS' && depth < 10) {
+            try {
+              const next = await figma.variables.getVariableByIdAsync(val.id);
+              if (!next) break;
+              const nextMode = Object.keys(next.valuesByMode)[0];
+              if (!nextMode) break;
+              val = next.valuesByMode[nextMode];
+            } catch { break; }
+            depth++;
+          }
+
+          let info: { name: string; collection: string; value: number | string } | null = null;
+          if (typeof val === 'number') {
+            info = { name: v.name, collection: colName, value: val };
+          } else if (typeof val === 'string') {
+            info = { name: v.name, collection: colName, value: val };
+          } else if (val && typeof val === 'object' && 'r' in val && 'g' in val && 'b' in val) {
+            info = { name: v.name, collection: colName, value: this.rgbaToHex(val) };
+          }
+
+          if (info) {
+            this.varCache.set(id, info);
+            return info;
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[TokenApplicator] Could not resolve variable', id, ':', e);
+    }
+
     this.varCache.set(id, null);
     return null;
   }
 
+  /** Resolve a variable collection ID to its name, with caching. */
+  private async fetchCollectionName(collectionId: string): Promise<string> {
+    if (this.colCache.has(collectionId)) return this.colCache.get(collectionId)!;
+
+    try {
+      const col = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+      if (col) {
+        this.colCache.set(collectionId, col.name);
+        return col.name;
+      }
+    } catch (e) {
+      console.log('[TokenApplicator] Could not fetch collection name for', collectionId);
+    }
+
+    return 'Library';
+  }
+
   /**
-   * Pre-load ALL local variables into localVarMap in a single pass.
-   * Resolves alias chains ONLY through other local variables (never calls getVariableByIdAsync).
+   * Pre-load ALL accessible variables into localVarMap.
+   * Phase 1: Local variables via getLocalVariablesAsync (alias chains followed locally).
+   * Phase 2: Library variables via teamLibrary APIs (for non-design-system files).
    * Also pre-builds colorVarCache, floatVarCache, and stringVarCache for manual matching.
    */
   private async buildLocalVarMap(): Promise<void> {
@@ -263,8 +338,112 @@ class TokenApplicator {
     this.floatVarCache = floats;
     this.stringVarCache = strings;
 
-    console.log('[TokenApplicator] Built local var map:', this.localVarMap.size, 'variables (' +
+    console.log('[TokenApplicator] Local variables:', this.localVarMap.size, '(' +
       colors.length + ' color, ' + floats.length + ' float, ' + strings.length + ' string)');
+
+    // Phase 2: Load library variables (from linked design systems)
+    await this.buildLibraryVarMap();
+
+    console.log('[TokenApplicator] Total variables loaded:', this.localVarMap.size, '(' +
+      (this.colorVarCache?.length || 0) + ' color, ' +
+      (this.floatVarCache?.length || 0) + ' float, ' +
+      (this.stringVarCache?.length || 0) + ' string)');
+  }
+
+  /**
+   * Load variables from linked library collections (design systems).
+   * Uses teamLibrary APIs to discover and import library variables,
+   * making them available for both resolveVar() lookups and manual fallback matching.
+   */
+  private async buildLibraryVarMap(): Promise<void> {
+    let libCollections;
+    try {
+      libCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+    } catch (e) {
+      // teamLibrary API not available (personal file or older API version)
+      console.log('[TokenApplicator] Library variable collections not available');
+      return;
+    }
+
+    if (libCollections.length === 0) return;
+
+    console.log('[TokenApplicator] Loading from', libCollections.length, 'library collections:',
+      libCollections.map(c => '"' + c.name + '" (' + c.libraryName + ')').join(', '));
+
+    let loadedCount = 0;
+
+    for (const libCol of libCollections) {
+      try {
+        const libVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCol.key);
+
+        for (const libVar of libVars) {
+          try {
+            const v = await figma.variables.importVariableByKeyAsync(libVar.key);
+
+            // Skip if already in map (loaded as local variable)
+            if (this.localVarMap.has(v.id)) continue;
+
+            const modeId = Object.keys(v.valuesByMode)[0];
+            if (!modeId) continue;
+            let val: any = v.valuesByMode[modeId];
+
+            // Follow alias chain
+            let depth = 0;
+            while (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS' && depth < 10) {
+              // Check local map first (avoids extra API calls)
+              const localRef = this.localVarMap.get(val.id);
+              if (localRef && typeof localRef.value === 'number') { val = localRef.value; break; }
+              if (localRef && typeof localRef.value === 'string' && !localRef.value.startsWith('#')) { val = localRef.value; break; }
+              try {
+                const next = await figma.variables.getVariableByIdAsync(val.id);
+                if (!next) break;
+                const nextMode = Object.keys(next.valuesByMode)[0];
+                if (!nextMode) break;
+                val = next.valuesByMode[nextMode];
+              } catch { break; }
+              depth++;
+            }
+
+            // Skip z-index variables
+            const nameLower = v.name.toLowerCase();
+            if (nameLower.includes('z-index') || nameLower.includes('z_index') || nameLower.includes('zindex')) continue;
+
+            const scopes = (v as any).scopes || [];
+            const colName = libCol.name;
+
+            // Cache collection name by variable collection ID
+            this.colCache.set(v.variableCollectionId, colName);
+
+            if (typeof val === 'number') {
+              this.localVarMap.set(v.id, { name: v.name, collection: colName, value: val });
+              if (v.resolvedType === 'FLOAT') {
+                this.floatVarCache!.push({ id: v.id, name: v.name, collection: colName, value: val, scopes });
+              }
+              loadedCount++;
+            } else if (typeof val === 'string') {
+              this.localVarMap.set(v.id, { name: v.name, collection: colName, value: val });
+              if (v.resolvedType === 'STRING') {
+                this.stringVarCache!.push({ id: v.id, name: v.name, collection: colName, value: val, scopes });
+              }
+              loadedCount++;
+            } else if (val && typeof val === 'object' && 'r' in val && 'g' in val && 'b' in val) {
+              const hex = this.rgbaToHex(val);
+              this.localVarMap.set(v.id, { name: v.name, collection: colName, value: hex });
+              if (v.resolvedType === 'COLOR') {
+                this.colorVarCache!.push({ id: v.id, name: v.name, collection: colName, r: val.r, g: val.g, b: val.b });
+              }
+              loadedCount++;
+            }
+          } catch (e) {
+            // Skip individual variables that fail to import
+          }
+        }
+      } catch (e) {
+        console.log('[TokenApplicator] Error loading library collection "' + libCol.name + '":', e);
+      }
+    }
+
+    console.log('[TokenApplicator] Loaded', loadedCount, 'library variables');
   }
 
   // ─── Scan selected nodes ──────────────────────────────────────
@@ -343,8 +522,21 @@ class TokenApplicator {
       if (typeof n.bottomRightRadius === 'number') await this.checkField(n, 'bottomRightRadius', n.bottomRightRadius, out, stats);
     }
 
-    // Note: strokeWeight scanning disabled — bindings don't reliably persist
-    // on component variants and instances, causing phantom re-detections.
+    // ── Stroke weight (only if the node has at least one visible stroke) ──
+    if ('strokeWeight' in node && 'strokes' in node) {
+      const strokes = (node as any).strokes;
+      if (Array.isArray(strokes) && strokes.length > 0) {
+        const hasVisibleStroke = strokes.some(
+          (s: any) => s.visible !== false && !(typeof s.opacity === 'number' && s.opacity === 0)
+        );
+        if (hasVisibleStroke) {
+          const sw = (node as any).strokeWeight;
+          if (typeof sw === 'number' && sw > 0) {
+            await this.checkField(node, 'strokeWeight', sw, out, stats);
+          }
+        }
+      }
+    }
 
     // ── Text properties ──
     // Each field is wrapped in its own try/catch so a failure in one
@@ -710,6 +902,8 @@ class TokenApplicator {
 
   /** Check if a property is already bound to any variable. */
   private isBoundToVariable(node: SceneNode, field: string): boolean {
+    // Check session-level tracking (catches bindings Figma doesn't persist in boundVariables)
+    if (this.appliedBindings.has(node.id + ':' + field)) return true;
     const bv = node.boundVariables;
     if (!bv) return false;
     const val = (bv as any)[field];
@@ -1095,6 +1289,10 @@ class TokenApplicator {
     if (undoEntries.length > 0) {
       this.undoStack = undoEntries;
       this.undoAction = 'apply';
+      // Track applied bindings so re-scans skip them (even if Figma doesn't persist in boundVariables)
+      for (const entry of undoEntries) {
+        this.appliedBindings.add(entry.nodeId + ':' + entry.field);
+      }
     }
     figma.ui.postMessage({ type: 'applied', ok, fail, errors, categoryStats: catStats, canUndo: undoEntries.length > 0 });
   }
@@ -1109,6 +1307,9 @@ class TokenApplicator {
     }
 
     figma.ui.postMessage({ type: 'stripping' });
+
+    // Clear session tracking — stripping removes all bindings
+    this.appliedBindings.clear();
 
     let stripped = 0;
     const catStats: Record<string, number> = {};
@@ -1273,6 +1474,11 @@ class TokenApplicator {
     const entries = this.undoStack;
     this.undoStack = [];
     this.undoAction = null;
+
+    // Remove session tracking for undone bindings
+    for (const entry of entries) {
+      this.appliedBindings.delete(entry.nodeId + ':' + entry.field);
+    }
 
     let ok = 0;
     let fail = 0;
